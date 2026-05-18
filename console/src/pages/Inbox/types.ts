@@ -10,6 +10,7 @@ export interface InboxSummary {
   harvests: {
     total: number;
     active: number;
+    unread: number;
   };
 }
 
@@ -48,24 +49,41 @@ export interface PushMessage {
 export interface HarvestInstance {
   id: string;
   name: string;
-  templateId: string;
   emoji: string;
-  schedule: {
-    cron: string;
-    timezone: string;
-    nextRun: Date;
-  };
+  cron: string;
+  timezone: string;
+  requestText: string;
+  enabled: boolean;
   status: "active" | "paused" | "error";
-  lastGenerated?: {
-    timestamp: Date;
-    success: boolean;
-    previewUrl?: string;
-  };
+  nextRunAt?: Date | null;
+  lastRunAt?: Date | null;
+  lastRunStatus?: "success" | "error" | "running" | "skipped" | "cancelled";
+  latestOutputTitle?: string;
+  latestOutputBody?: string;
+  latestOutputRunId?: string;
   stats: {
     totalGenerated: number;
     successRate: number;
-    consecutiveDays: number;
   };
+}
+
+export interface HarvestExecution {
+  id: string;
+  runId?: string;
+  title: string;
+  body: string;
+  status: string;
+  createdAt: Date;
+  trigger?: string;
+  read: boolean;
+}
+
+export interface HarvestUpsertPayload {
+  id?: string;
+  name: string;
+  cron: string;
+  timezone: string;
+  requestText: string;
 }
 
 export interface ApprovalItem {

@@ -5,6 +5,7 @@ import type { CronJobSpecOutput } from "../../../api/types";
 import { useAgentStore } from "../../../stores/agentStore";
 
 type CronJob = CronJobSpecOutput;
+const isHarvestJob = (job: CronJob) => Boolean(job.meta?.harvest);
 
 export function useCronJobs() {
   const { selectedAgent } = useAgentStore();
@@ -17,7 +18,7 @@ export function useCronJobs() {
     try {
       const data = await api.listCronJobs();
       if (data) {
-        setJobs(data as CronJob[]);
+        setJobs((data as CronJob[]).filter((job) => !isHarvestJob(job)));
       }
     } catch (error) {
       console.error("Failed to load cron jobs", error);
@@ -46,7 +47,9 @@ export function useCronJobs() {
   const createJob = async (values: CronJob) => {
     try {
       const created = await api.createCronJob(values);
-      setJobs((prev) => [created as CronJob, ...prev]);
+      if (!isHarvestJob(created as CronJob)) {
+        setJobs((prev) => [created as CronJob, ...prev]);
+      }
       message.success("Created successfully");
       return true;
     } catch (error) {
@@ -63,9 +66,13 @@ export function useCronJobs() {
 
     try {
       const updated = await api.replaceCronJob(jobId, values);
-      setJobs((prev) =>
-        prev.map((j) => (j.id === jobId ? (updated as CronJob) : j)),
-      );
+      if (isHarvestJob(updated as CronJob)) {
+        setJobs((prev) => prev.filter((j) => j.id !== jobId));
+      } else {
+        setJobs((prev) =>
+          prev.map((j) => (j.id === jobId ? (updated as CronJob) : j)),
+        );
+      }
       message.success("Updated successfully");
       return true;
     } catch (error) {

@@ -60,6 +60,7 @@ export const consoleApi = {
     limit?: number;
     offset?: number;
     source_type?: string;
+    source_id?: string;
     status?: string;
     agent_id?: string;
     unread_only?: boolean;
@@ -69,6 +70,7 @@ export const consoleApi = {
     if (params?.offset !== undefined)
       query.set("offset", String(params.offset));
     if (params?.source_type) query.set("source_type", params.source_type);
+    if (params?.source_id) query.set("source_id", params.source_id);
     if (params?.status) query.set("status", params.status);
     if (params?.agent_id) query.set("agent_id", params.agent_id);
     if (params?.unread_only !== undefined) {

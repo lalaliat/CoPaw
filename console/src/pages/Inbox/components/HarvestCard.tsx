@@ -19,12 +19,22 @@ export function HarvestCard({
   onSettings,
 }: HarvestCardProps) {
   const { t } = useTranslation();
-  const countdown = useHarvestCountdown(harvest.schedule.nextRun);
+  const countdown = useHarvestCountdown(harvest.nextRunAt);
   const timeText = countdown.isOverdue
     ? t("inbox.ready")
     : `${String(countdown.hours).padStart(2, "0")}:${String(
         countdown.minutes,
       ).padStart(2, "0")}:${String(countdown.seconds).padStart(2, "0")}`;
+  const statusText =
+    harvest.status === "paused"
+      ? "Paused"
+      : countdown.isOverdue
+      ? "Ready"
+      : t("inbox.statusGrowing");
+  const lastRunLabel = harvest.lastRunAt
+    ? harvest.lastRunAt.toLocaleString()
+    : "Never";
+  const latestOutput = harvest.latestOutputTitle || "No output yet";
 
   return (
     <Card
@@ -32,7 +42,7 @@ export function HarvestCard({
         countdown.isOverdue ? styles.harvestCardReady : ""
       }`}
       hoverable
-      bodyStyle={{ padding: 14 }}
+      bodyStyle={{ padding: "16px 14px 18px" }}
     >
       <div className={styles.cardHeader}>
         <div className={styles.titleRow}>
@@ -41,7 +51,7 @@ export function HarvestCard({
         </div>
         <Badge
           status={harvest.status === "active" ? "processing" : "default"}
-          text={harvest.status}
+          text={harvest.enabled ? "active" : "paused"}
         />
       </div>
       <div className={styles.cardBody}>
@@ -50,15 +60,14 @@ export function HarvestCard({
             type="circle"
             size={90}
             percent={Math.round(countdown.percentage)}
-            format={() => timeText}
+            format={() => (
+              <span style={{ fontSize: 15, fontWeight: 600 }}>{timeText}</span>
+            )}
             strokeColor={countdown.isOverdue ? "#FFD700" : "#FF7F16"}
           />
           <div className={styles.countdownInfo}>
             <div className={styles.statusText}>
-              <Clock size={14} />{" "}
-              {countdown.isOverdue
-                ? t("inbox.statusReadyToHarvest")
-                : t("inbox.statusGrowing")}
+              <Clock size={14} /> {statusText}
             </div>
           </div>
         </div>
@@ -79,6 +88,15 @@ export function HarvestCard({
               })}
             </span>
           </div>
+        </div>
+        <div className={styles.lastRunSection}>
+          <span className={styles.lastRunLabel}>
+            Last harvest: {lastRunLabel}
+          </span>
+        </div>
+        <div className={styles.latestOutputSection}>
+          <div className={styles.latestOutputTitle}>Latest Output</div>
+          <div className={styles.latestOutputText}>{latestOutput}</div>
         </div>
       </div>
       <div className={styles.cardActions}>

@@ -21,6 +21,19 @@
   margin-bottom: 12px;
 }
 
+.loadingWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.traceMarkdown {
+  max-height: 420px;
+  overflow: auto;
+  line-height: 1.65;
+}
+
 .timeline {
   display: flex;
   overflow-x: auto;
@@ -36,9 +49,19 @@
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .active {
   border-color: #ff7f16;
   color: #ff7f16;
+}
+
+.unreadDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff4d4f;
 }

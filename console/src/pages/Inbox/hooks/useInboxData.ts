@@ -2,16 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import api from "../../../api";
 import type { InboxEvent } from "../../../api/modules/console";
+import type {
+  CronJobExecutionRecord,
+  CronJobSpecOutput,
+} from "../../../api/types";
 import { useAgentStore } from "../../../stores/agentStore";
 import {
   DEFAULT_AGENT_ID,
   getAgentDisplayName,
 } from "../../../utils/agentDisplayName";
-import type { HarvestInstance, InboxSummary, PushMessage } from "../types";
+import type {
+  HarvestExecution,
+  HarvestInstance,
+  HarvestUpsertPayload,
+  InboxSummary,
+  PushMessage,
+} from "../types";
 
 const PUSH_POLLING_INTERVAL_MS = 6000;
-
-const MOCK_HARVESTS: HarvestInstance[] = [];
+const HARVEST_UNREAD_POLLING_INTERVAL_MS = 6000;
+const HARVEST_EMOJIS = ["🚀", "📊", "🏢", "🎓", "💼", "🧠", "🛰️", "🧪"];
 
 const mapPriority = (text: string): "low" | "normal" | "high" | "urgent" => {
   if (text.includes("❌") || text.toLowerCase().includes("error")) {
@@ -87,7 +97,45 @@ const mapEventToPushMessage = (
   },
 });
 
-export const useInboxData = () => {
+const isHarvestCronJob = (job: CronJobSpecOutput): boolean =>
+  Boolean(job.meta?.harvest) && job.task_type === "agent";
+
+const getRequestText = (job: CronJobSpecOutput): string => {
+  const input = job.request?.input;
+  if (typeof input === "string") {
+    return JSON.stringify(
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: input }],
+        },
+      ],
+      null,
+      2,
+    );
+  }
+  if (input === null || input === undefined) return "";
+  try {
+    return JSON.stringify(input, null, 2);
+  } catch {
+    return String(input);
+  }
+};
+
+const toDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const calculateSuccessRate = (records: CronJobExecutionRecord[]): number => {
+  if (!records.length) return 0;
+  const successCount = records.filter((r) => r.status === "success").length;
+  return Math.round((successCount / records.length) * 1000) / 10;
+};
+
+export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
+  const { pauseHarvestPolling = false } = options || {};
   const { t } = useTranslation();
   const agents = useAgentStore((state) => state.agents);
   const agentsById = useMemo(
@@ -110,27 +158,38 @@ export const useInboxData = () => {
   );
   const resolveAgentNameRef = useRef(resolveAgentName);
   resolveAgentNameRef.current = resolveAgentName;
+  const harvestSpecsRef = useRef<Record<string, CronJobSpecOutput>>({});
+
   const [summary, setSummary] = useState<InboxSummary>({
     approvals: { total: 0, urgent: 0 },
     pushMessages: { total: 0, unread: 0 },
-    harvests: {
-      total: MOCK_HARVESTS.length,
-      active: MOCK_HARVESTS.filter((h) => h.status === "active").length,
-    },
+    harvests: { total: 0, active: 0, unread: 0 },
   });
   const [pushMessages, setPushMessages] = useState<PushMessage[]>([]);
   const pushMessagesRef = useRef(pushMessages);
   pushMessagesRef.current = pushMessages;
-  const [harvests] = useState<HarvestInstance[]>(MOCK_HARVESTS);
+  const [harvests, setHarvests] = useState<HarvestInstance[]>([]);
+  const [harvestsLoading, setHarvestsLoading] = useState(false);
 
   const loadPushMessages = useCallback(async () => {
     try {
       const res = await api.getInboxEvents({ limit: 200 });
+      const harvestIdSet = new Set(Object.keys(harvestSpecsRef.current));
       const events = [...(res?.events || [])].filter((event) =>
         ["cron", "heartbeat"].includes(event.source_type),
       );
-      events.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-      const nextItems: PushMessage[] = events.map((event) =>
+      const nonHarvestEvents = events.filter(
+        (event) =>
+          !(
+            event.source_type === "cron" &&
+            (harvestIdSet.has(event.source_id || "") ||
+              Boolean(event.payload?.harvest))
+          ),
+      );
+      nonHarvestEvents.sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0),
+      );
+      const nextItems: PushMessage[] = nonHarvestEvents.map((event) =>
         mapEventToPushMessage(event, resolveAgentNameRef.current),
       );
       setPushMessages(nextItems);
@@ -146,16 +205,191 @@ export const useInboxData = () => {
     }
   }, []);
 
+  const refreshHarvests = useCallback(async () => {
+    setHarvestsLoading(true);
+    try {
+      const [jobs, cronEventsRes] = await Promise.all([
+        api.listCronJobs(),
+        api.getInboxEvents({ source_type: "cron", limit: 500 }),
+      ]);
+      const harvestJobs = (jobs || []).filter(isHarvestCronJob);
+      const cronEvents = cronEventsRes?.events || [];
+      const eventsBySourceId = new Map<string, InboxEvent[]>();
+      cronEvents.forEach((event) => {
+        const sourceId = event.source_id || "";
+        const list = eventsBySourceId.get(sourceId);
+        if (list) {
+          list.push(event);
+        } else {
+          eventsBySourceId.set(sourceId, [event]);
+        }
+      });
+      const [histories, states] = await Promise.all([
+        Promise.all(
+          harvestJobs.map((job) =>
+            api.getCronJobHistory(job.id || "").catch(() => []),
+          ),
+        ),
+        Promise.all(
+          harvestJobs.map((job) =>
+            api.getCronJobState(job.id || "").catch(() => null),
+          ),
+        ),
+      ]);
+      const nextHarvests = harvestJobs.map((job, index) => {
+        const history = histories[index] || [];
+        const state = states[index] as {
+          next_run_at?: string;
+          last_run_at?: string;
+          last_status?:
+            | "success"
+            | "error"
+            | "running"
+            | "skipped"
+            | "cancelled";
+        } | null;
+        const outputEvents = eventsBySourceId.get(job.id || "") || [];
+        outputEvents.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        const latest = outputEvents[0];
+        const enabled = job.enabled !== false;
+        const lastStatus = state?.last_status;
+        const normalizedStatus: HarvestInstance["status"] = !enabled
+          ? "paused"
+          : lastStatus === "error"
+          ? "error"
+          : "active";
+        return {
+          id: job.id || `harvest-${index}`,
+          name: job.name,
+          emoji: String(
+            job.meta?.harvest_emoji ||
+              HARVEST_EMOJIS[index % HARVEST_EMOJIS.length],
+          ),
+          cron: job.schedule?.type === "cron" ? job.schedule.cron || "" : "",
+          timezone: job.schedule?.timezone || "UTC",
+          requestText: getRequestText(job),
+          enabled,
+          status: normalizedStatus,
+          nextRunAt: toDate(state?.next_run_at),
+          lastRunAt: toDate(state?.last_run_at),
+          lastRunStatus: lastStatus,
+          latestOutputTitle: latest?.title,
+          latestOutputBody: latest?.body,
+          latestOutputRunId:
+            typeof latest?.payload?.run_id === "string"
+              ? (latest.payload.run_id as string)
+              : undefined,
+          stats: {
+            totalGenerated: history.length,
+            successRate: calculateSuccessRate(history),
+          },
+        } as HarvestInstance;
+      });
+      harvestSpecsRef.current = Object.fromEntries(
+        harvestJobs.map((job) => [job.id || "", job]),
+      );
+      setHarvests(nextHarvests);
+      const unreadCount = harvestJobs.reduce((acc, job) => {
+        const events = eventsBySourceId.get(job.id || "") || [];
+        return acc + events.filter((event) => !event.read).length;
+      }, 0);
+      setSummary((prev) => ({
+        ...prev,
+        harvests: {
+          total: nextHarvests.length,
+          active: nextHarvests.filter((h) => h.enabled).length,
+          unread: unreadCount,
+        },
+      }));
+    } catch (error) {
+      console.error("Failed to fetch harvest data", error);
+    } finally {
+      setHarvestsLoading(false);
+    }
+  }, []);
+
+  const refreshHarvestUnreadCount = useCallback(async () => {
+    try {
+      const res = await api.getInboxEvents({
+        source_type: "cron",
+        unread_only: true,
+        limit: 500,
+      });
+      const harvestIdSet = new Set(Object.keys(harvestSpecsRef.current));
+      const unreadCount = (res?.events || []).filter(
+        (event) =>
+          Boolean(event.payload?.harvest) ||
+          harvestIdSet.has(event.source_id || ""),
+      ).length;
+      setSummary((prev) => {
+        if (prev.harvests.unread === unreadCount) return prev;
+        return {
+          ...prev,
+          harvests: {
+            ...prev.harvests,
+            unread: unreadCount,
+          },
+        };
+      });
+    } catch (error) {
+      console.error("Failed to refresh harvest unread count", error);
+    }
+  }, []);
+
+  const loadHarvestExecutions = useCallback(
+    async (harvestId: string): Promise<HarvestExecution[]> => {
+      try {
+        const res = await api.getInboxEvents({
+          source_type: "cron",
+          source_id: harvestId,
+          limit: 200,
+        });
+        const events = res?.events || [];
+        return events
+          .map((event) => ({
+            id: event.id,
+            runId:
+              typeof event.payload?.run_id === "string"
+                ? (event.payload.run_id as string)
+                : undefined,
+            title: event.title,
+            body: event.body,
+            status: event.status,
+            createdAt: new Date((event.created_at || Date.now() / 1000) * 1000),
+            trigger:
+              typeof event.payload?.trigger === "string"
+                ? (event.payload.trigger as string)
+                : undefined,
+            read: Boolean(event.read),
+          }))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      } catch (error) {
+        console.error("Failed to load harvest executions", error);
+        return [];
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     void loadPushMessages();
+    void refreshHarvests();
+    void refreshHarvestUnreadCount();
 
     let timer: number | null = null;
+    let unreadTimer: number | null = null;
 
     const startPolling = () => {
-      if (timer) return;
-      timer = window.setInterval(() => {
-        void loadPushMessages();
-      }, PUSH_POLLING_INTERVAL_MS);
+      if (!timer) {
+        timer = window.setInterval(() => {
+          void loadPushMessages();
+        }, PUSH_POLLING_INTERVAL_MS);
+      }
+      if (!unreadTimer) {
+        unreadTimer = window.setInterval(() => {
+          void refreshHarvestUnreadCount();
+        }, HARVEST_UNREAD_POLLING_INTERVAL_MS);
+      }
     };
 
     const stopPolling = () => {
@@ -163,11 +397,19 @@ export const useInboxData = () => {
         window.clearInterval(timer);
         timer = null;
       }
+      if (unreadTimer) {
+        window.clearInterval(unreadTimer);
+        unreadTimer = null;
+      }
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         void loadPushMessages();
+        if (!pauseHarvestPolling) {
+          void refreshHarvests();
+        }
+        void refreshHarvestUnreadCount();
         startPolling();
       } else {
         stopPolling();
@@ -183,7 +425,12 @@ export const useInboxData = () => {
       stopPolling();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [loadPushMessages]);
+  }, [
+    loadPushMessages,
+    pauseHarvestPolling,
+    refreshHarvests,
+    refreshHarvestUnreadCount,
+  ]);
 
   const markMessageAsRead = useCallback((messageId: string) => {
     void api.markInboxRead({ event_ids: [messageId] });
@@ -262,19 +509,94 @@ export const useInboxData = () => {
     [deleteMessages],
   );
 
-  const triggerHarvest = useCallback((harvestId: string) => {
-    console.info("triggerHarvest", harvestId);
-  }, []);
+  const triggerHarvest = useCallback(
+    async (harvestId: string) => {
+      await api.triggerCronJob(harvestId);
+      void refreshHarvests();
+    },
+    [refreshHarvests],
+  );
+
+  const upsertHarvest = useCallback(
+    async (payload: HarvestUpsertPayload) => {
+      const existing = payload.id ? harvestSpecsRef.current[payload.id] : null;
+      const baseMeta = existing?.meta || {};
+      let parsedInput: unknown;
+      try {
+        parsedInput = JSON.parse(payload.requestText);
+      } catch {
+        throw new Error("Request content must be valid JSON");
+      }
+      if (!Array.isArray(parsedInput)) {
+        throw new Error("Request content must be a JSON array");
+      }
+      const spec: CronJobSpecOutput = {
+        id: payload.id || "",
+        name: payload.name,
+        enabled: existing?.enabled ?? true,
+        save_result_to_inbox: true,
+        schedule: {
+          type: "cron",
+          cron: payload.cron,
+          timezone: payload.timezone,
+        },
+        task_type: "agent",
+        request: {
+          ...(existing?.request || {}),
+          input: parsedInput,
+        },
+        dispatch: existing?.dispatch || {
+          type: "channel",
+          channel: "console",
+          target: {
+            user_id: "harvest",
+            session_id: `harvest:${payload.name
+              .replace(/\s+/g, "-")
+              .toLowerCase()}`,
+          },
+          mode: "stream",
+        },
+        runtime: existing?.runtime,
+        meta: {
+          ...baseMeta,
+          harvest: true,
+          harvest_emoji:
+            existing?.meta?.harvest_emoji ||
+            HARVEST_EMOJIS[Math.floor(Math.random() * HARVEST_EMOJIS.length)],
+        },
+      };
+      if (payload.id) {
+        await api.replaceCronJob(payload.id, spec);
+      } else {
+        await api.createCronJob(spec);
+      }
+      await refreshHarvests();
+    },
+    [refreshHarvests],
+  );
+
+  const markHarvestExecutionRead = useCallback(
+    async (eventId: string) => {
+      await api.markInboxRead({ event_ids: [eventId] });
+      await refreshHarvests();
+    },
+    [refreshHarvests],
+  );
 
   return {
     summary,
     pushMessages,
     harvests,
+    harvestsLoading,
     markMessageAsRead,
     markAllMessagesAsRead,
     deleteMessage,
     deleteMessages,
     triggerHarvest,
+    upsertHarvest,
+    loadHarvestExecutions,
+    markHarvestExecutionRead,
+    refreshHarvests,
     refreshPushMessages: loadPushMessages,
   };
 };

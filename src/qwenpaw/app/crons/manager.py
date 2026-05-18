@@ -592,6 +592,10 @@ class CronManager:
                                     "delivery_error": execution_result.get(
                                         "delivery_error",
                                     ),
+                                    "harvest": bool(
+                                        isinstance(job.meta, dict)
+                                        and job.meta.get("harvest"),
+                                    ),
                                 },
                             )
                         except Exception:  # pylint: disable=broad-except
@@ -621,6 +625,10 @@ class CronManager:
                                     "run_id": execution_result.get("run_id"),
                                     "save_result_to_inbox": (
                                         job.save_result_to_inbox
+                                    ),
+                                    "harvest": bool(
+                                        isinstance(job.meta, dict)
+                                        and job.meta.get("harvest"),
                                     ),
                                 },
                             )

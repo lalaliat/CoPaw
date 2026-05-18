@@ -8,7 +8,7 @@ interface CountdownResult {
   isOverdue: boolean;
 }
 
-export function useHarvestCountdown(nextRun: Date): CountdownResult {
+export function useHarvestCountdown(nextRun?: Date | null): CountdownResult {
   const [countdown, setCountdown] = useState<CountdownResult>({
     hours: 0,
     minutes: 0,
@@ -19,6 +19,16 @@ export function useHarvestCountdown(nextRun: Date): CountdownResult {
 
   useEffect(() => {
     const calculate = () => {
+      if (!nextRun) {
+        setCountdown({
+          hours: 0,
+          minutes: 0,
+          seconds: 0,
+          percentage: 0,
+          isOverdue: true,
+        });
+        return;
+      }
       const now = Date.now();
       const target = nextRun.getTime();
       const diff = target - now;

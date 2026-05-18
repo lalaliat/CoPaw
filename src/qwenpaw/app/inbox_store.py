@@ -72,6 +72,7 @@ async def list_events(
     limit: int = 50,
     offset: int = 0,
     source_type: str | None = None,
+    source_id: str | None = None,
     status: str | None = None,
     agent_id: str | None = None,
     unread_only: bool = False,
@@ -83,6 +84,10 @@ async def list_events(
             event
             for event in events
             if event.get("source_type") == source_type
+        ]
+    if source_id:
+        events = [
+            event for event in events if event.get("source_id") == source_id
         ]
     if status:
         events = [event for event in events if event.get("status") == status]
