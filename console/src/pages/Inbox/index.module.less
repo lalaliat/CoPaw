@@ -274,6 +274,29 @@
   :global(li + li) {
     margin-top: 4px;
   }
+
+  :global(table) {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  :global(th),
+  :global(td) {
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  :global(th) {
+    background: rgba(0, 0, 0, 0.04);
+    font-weight: 600;
+  }
 }
 
 .traceUserRow {
@@ -406,6 +429,29 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
       "Liberation Mono", "Courier New", monospace;
   }
+
+  :global(table) {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  :global(th),
+  :global(td) {
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  :global(th) {
+    background: rgba(0, 0, 0, 0.04);
+    font-weight: 600;
+  }
 }
 
 @media (max-width: 960px) {
@@ -500,6 +546,18 @@
   .toolCodeBlock,
   .traceMarkdownBlock {
     color: rgba(255, 255, 255, 0.82);
+  }
+
+  .traceAssistantMessage :global(th),
+  .traceAssistantMessage :global(td),
+  .traceMarkdownBlock :global(th),
+  .traceMarkdownBlock :global(td) {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .traceAssistantMessage :global(th),
+  .traceMarkdownBlock :global(th) {
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .toolCodeBlock {

@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import api from "../../../api";
 import type { InboxEvent } from "../../../api/modules/console";
-import type {
-  CronJobExecutionRecord,
-  CronJobSpecOutput,
-} from "../../../api/types";
+import type { CronJobSpecOutput } from "../../../api/types";
 import { useAgentStore } from "../../../stores/agentStore";
 import {
   DEFAULT_AGENT_ID,
@@ -21,7 +18,6 @@ import type {
 
 const PUSH_POLLING_INTERVAL_MS = 6000;
 const HARVEST_UNREAD_POLLING_INTERVAL_MS = 6000;
-const HARVEST_EMOJIS = ["🚀", "📊", "🏢", "🎓", "💼", "🧠", "🛰️", "🧪"];
 
 const mapPriority = (text: string): "low" | "normal" | "high" | "urgent" => {
   if (text.includes("❌") || text.toLowerCase().includes("error")) {
@@ -126,12 +122,6 @@ const toDate = (value: unknown): Date | null => {
   if (!value) return null;
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const calculateSuccessRate = (records: CronJobExecutionRecord[]): number => {
-  if (!records.length) return 0;
-  const successCount = records.filter((r) => r.status === "success").length;
-  return Math.round((successCount / records.length) * 1000) / 10;
 };
 
 export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
@@ -261,10 +251,6 @@ export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
         return {
           id: job.id || `harvest-${index}`,
           name: job.name,
-          emoji: String(
-            job.meta?.harvest_emoji ||
-              HARVEST_EMOJIS[index % HARVEST_EMOJIS.length],
-          ),
           cron: job.schedule?.type === "cron" ? job.schedule.cron || "" : "",
           timezone: job.schedule?.timezone || "UTC",
           requestText: getRequestText(job),
@@ -281,7 +267,6 @@ export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
               : undefined,
           stats: {
             totalGenerated: history.length,
-            successRate: calculateSuccessRate(history),
           },
         } as HarvestInstance;
       });
@@ -517,6 +502,29 @@ export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
     [refreshHarvests],
   );
 
+  const toggleHarvestEnabled = useCallback(
+    async (harvestId: string, enabled: boolean) => {
+      const spec = harvestSpecsRef.current[harvestId];
+      if (!spec) {
+        throw new Error("Harvest not found");
+      }
+      await api.replaceCronJob(harvestId, {
+        ...spec,
+        enabled,
+      });
+      await refreshHarvests();
+    },
+    [refreshHarvests],
+  );
+
+  const deleteHarvest = useCallback(
+    async (harvestId: string) => {
+      await api.deleteCronJob(harvestId);
+      await refreshHarvests();
+    },
+    [refreshHarvests],
+  );
+
   const upsertHarvest = useCallback(
     async (payload: HarvestUpsertPayload) => {
       const existing = payload.id ? harvestSpecsRef.current[payload.id] : null;
@@ -560,9 +568,6 @@ export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
         meta: {
           ...baseMeta,
           harvest: true,
-          harvest_emoji:
-            existing?.meta?.harvest_emoji ||
-            HARVEST_EMOJIS[Math.floor(Math.random() * HARVEST_EMOJIS.length)],
         },
       };
       if (payload.id) {
@@ -593,6 +598,8 @@ export const useInboxData = (options?: { pauseHarvestPolling?: boolean }) => {
     deleteMessage,
     deleteMessages,
     triggerHarvest,
+    toggleHarvestEnabled,
+    deleteHarvest,
     upsertHarvest,
     loadHarvestExecutions,
     markHarvestExecutionRead,

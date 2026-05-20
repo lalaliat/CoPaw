@@ -49,7 +49,6 @@ export interface PushMessage {
 export interface HarvestInstance {
   id: string;
   name: string;
-  emoji: string;
   cron: string;
   timezone: string;
   requestText: string;
@@ -63,7 +62,6 @@ export interface HarvestInstance {
   latestOutputRunId?: string;
   stats: {
     totalGenerated: number;
-    successRate: number;
   };
 }
 
@@ -100,7 +98,6 @@ export interface ApprovalItem {
 export interface HarvestTemplate {
   id: string;
   name: string;
-  emoji: string;
   description: string;
   estimatedReadTime: number;
   defaultSchedule: {

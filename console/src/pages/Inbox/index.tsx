@@ -112,6 +112,8 @@ export default function InboxPage() {
     deleteMessage,
     deleteMessages,
     triggerHarvest,
+    toggleHarvestEnabled,
+    deleteHarvest,
     upsertHarvest,
     loadHarvestExecutions,
     markHarvestExecutionRead,
@@ -353,6 +355,34 @@ export default function InboxPage() {
     }
   };
 
+  const handleDeleteHarvest = async (harvestId: string) => {
+    try {
+      await deleteHarvest(harvestId);
+      message.success(t("inbox.harvestDeleted"));
+      if (viewerHarvest?.id === harvestId) {
+        setHarvestViewerOpen(false);
+        setViewerHarvest(null);
+        setViewerExecutions([]);
+      }
+    } catch {
+      message.error(t("inbox.harvestDeleteFailed"));
+    }
+  };
+
+  const handleToggleHarvestEnabled = async (
+    harvestId: string,
+    enabled: boolean,
+  ) => {
+    try {
+      await toggleHarvestEnabled(harvestId, enabled);
+      message.success(
+        enabled ? t("inbox.harvestResumed") : t("inbox.harvestPaused"),
+      );
+    } catch {
+      message.error(t("inbox.harvestStatusUpdateFailed"));
+    }
+  };
+
   const handleViewHarvest = async (harvestId: string) => {
     const target = harvests.find((item) => item.id === harvestId);
     if (!target) return;
@@ -578,6 +608,12 @@ export default function InboxPage() {
                     void handleViewHarvest(id);
                   }}
                   onSettings={handleEditHarvest}
+                  onDelete={(id) => {
+                    void handleDeleteHarvest(id);
+                  }}
+                  onToggleEnabled={(id, enabled) => {
+                    void handleToggleHarvestEnabled(id, enabled);
+                  }}
                 />
               ))}
             </div>

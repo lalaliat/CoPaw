@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Modal, Form, Input, Button } from "antd";
 import { Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { HarvestUpsertPayload } from "../types";
 import styles from "./CreateHarvestModal.module.less";
 
@@ -28,6 +29,7 @@ export function CreateHarvestModal({
   onClose,
   onSubmit,
 }: CreateHarvestModalProps) {
+  const { t } = useTranslation();
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -50,7 +52,9 @@ export function CreateHarvestModal({
       title={
         <span className={styles.modalTitle}>
           <Sparkles size={18} />
-          {initialValues?.id ? "Edit Harvest" : "Create Harvest"}
+          {initialValues?.id
+            ? t("inbox.harvestEditTitle")
+            : t("inbox.harvestCreateTitle")}
         </span>
       }
       destroyOnClose
@@ -74,19 +78,19 @@ export function CreateHarvestModal({
         </Form.Item>
         <Form.Item
           name="name"
-          label="Harvest Name"
-          rules={[{ required: true, message: "Please input harvest name" }]}
+          label={t("inbox.harvestNameLabel")}
+          rules={[{ required: true, message: t("inbox.harvestNameRequired") }]}
         >
-          <Input placeholder="Tech Frontier Harvest" />
+          <Input placeholder={t("inbox.harvestNamePlaceholder")} />
         </Form.Item>
         <Form.Item
           name="cron"
-          label="Cron (5 fields)"
+          label={t("inbox.harvestCronLabel")}
           rules={[
-            { required: true, message: "Please input cron expression" },
+            { required: true, message: t("inbox.harvestCronRequired") },
             {
               pattern: /^(\S+\s+){4}\S+$/,
-              message: "Cron must contain 5 fields",
+              message: t("inbox.harvestCronInvalid"),
             },
           ]}
         >
@@ -94,17 +98,22 @@ export function CreateHarvestModal({
         </Form.Item>
         <Form.Item
           name="timezone"
-          label="Timezone"
-          rules={[{ required: true, message: "Please input timezone" }]}
+          label={t("inbox.harvestTimezoneLabel")}
+          rules={[
+            { required: true, message: t("inbox.harvestTimezoneRequired") },
+          ]}
         >
           <Input placeholder="Asia/Shanghai" />
         </Form.Item>
         <Form.Item
           name="requestText"
-          label="Request Content"
-          extra='Format: [{"role":"user","content":[{"type":"text","text":"..."}]}]'
+          label={t("inbox.harvestRequestContentLabel")}
+          extra={t("inbox.harvestRequestContentFormat")}
           rules={[
-            { required: true, message: "Please input request content" },
+            {
+              required: true,
+              message: t("inbox.harvestRequestContentRequired"),
+            },
             {
               validator: async (_, value) => {
                 const text = String(value || "").trim();
@@ -113,10 +122,10 @@ export function CreateHarvestModal({
                 try {
                   parsed = JSON.parse(text);
                 } catch {
-                  throw new Error("Request content must be valid JSON");
+                  throw new Error(t("inbox.harvestRequestContentJsonError"));
                 }
                 if (!Array.isArray(parsed)) {
-                  throw new Error("Request content must be a JSON array");
+                  throw new Error(t("inbox.harvestRequestContentArrayError"));
                 }
               },
             },
@@ -125,9 +134,11 @@ export function CreateHarvestModal({
           <Input.TextArea rows={8} placeholder={REQUEST_CONTENT_EXAMPLE} />
         </Form.Item>
         <div className={styles.actions}>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("common.cancel")}</Button>
           <Button type="primary" htmlType="submit">
-            {initialValues?.id ? "Save Harvest" : "Create Harvest"}
+            {initialValues?.id
+              ? t("inbox.harvestSaveButton")
+              : t("inbox.harvestCreateButton")}
           </Button>
         </div>
       </Form>
