@@ -33,6 +33,19 @@ export interface CronJobRuntime {
   max_concurrency?: number;
   timeout_seconds?: number;
   misfire_grace_seconds?: number;
+  share_session?: boolean;
+}
+
+export interface RunIfSpec {
+  command: string;
+  timeout_seconds?: number;
+  bypass_on_manual?: boolean;
+}
+
+export interface NotifyIfSpec {
+  command: string;
+  timeout_seconds?: number;
+  bypass_on_manual?: boolean;
 }
 
 export interface CronJobRequest {
@@ -53,10 +66,31 @@ export interface CronJobSpecInput {
   request?: CronJobRequest;
   dispatch: CronJobDispatch;
   runtime?: CronJobRuntime;
+  run_if?: RunIfSpec;
+  notify_if?: NotifyIfSpec;
   meta?: Record<string, unknown>;
 }
 
 export type CronJobSpecOutput = CronJobSpecInput;
+
+/** Console form-only fields (stripped before API submit). */
+export interface CronJobFormExtras {
+  scheduleType?: "cron" | "once";
+  onceRunAt?: unknown;
+  onceRepeatEnabled?: boolean;
+  onceRepeatEveryDays?: number;
+  onceRepeatEndType?: "never" | "until" | "count";
+  onceRepeatUntil?: unknown;
+  onceRepeatCount?: number;
+  cronType?: string;
+  cronTime?: unknown;
+  cronDaysOfWeek?: string[];
+  cronCustom?: string;
+  runIfEnabled?: boolean;
+  notifyIfEnabled?: boolean;
+}
+
+export type CronJobFormValues = CronJobSpecInput & CronJobFormExtras;
 
 export interface CronJobView extends CronJobSpecOutput {
   // Extended view with runtime state

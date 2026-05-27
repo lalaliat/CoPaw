@@ -164,6 +164,54 @@ class JobRuntimeSpec(BaseModel):
     )
 
 
+class RunIfSpec(BaseModel):
+    """Optional preflight gate: run a workspace shell command before execution.
+
+    Exit-code contract:
+
+    - ``0`` → skip the job for this tick
+    - non-zero → proceed with execution
+    - launch/timeout failures → record an error for this tick
+    """
+
+    command: str = Field(
+        min_length=1,
+        description=(
+            "Shell command executed in the agent workspace. "
+            "Use exit 0 to skip and any non-zero exit to run."
+        ),
+    )
+    timeout_seconds: int = Field(default=30, ge=1)
+    bypass_on_manual: bool = Field(
+        default=True,
+        description="When True, manual /run ignores this gate",
+    )
+
+
+class NotifyIfSpec(BaseModel):
+    """Optional postflight gate: run a workspace shell command before delivery.
+
+    Exit-code contract:
+
+    - ``0`` → skip delivery for this run
+    - non-zero → deliver per dispatch / inbox settings
+    - launch/timeout failures → record an error for this tick
+    """
+
+    command: str = Field(
+        min_length=1,
+        description=(
+            "Shell command executed after a successful run. "
+            "Use exit 0 to skip delivery and any non-zero exit to notify."
+        ),
+    )
+    timeout_seconds: int = Field(default=30, ge=1)
+    bypass_on_manual: bool = Field(
+        default=True,
+        description="When True, manual /run ignores this gate",
+    )
+
+
 class CronJobRequest(BaseModel):
     """Passthrough payload to runner.stream_query(request=...).
 
@@ -193,6 +241,8 @@ class CronJobSpec(BaseModel):
     save_result_to_inbox: Optional[bool] = None
 
     runtime: JobRuntimeSpec = Field(default_factory=JobRuntimeSpec)
+    run_if: Optional[RunIfSpec] = None
+    notify_if: Optional[NotifyIfSpec] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

@@ -18,6 +18,8 @@ import type {
 } from "../../../../api/types";
 import { DEFAULT_FORM_VALUES } from "./constants";
 import { useTimezoneOptions } from "../../../../hooks/useTimezoneOptions";
+import { RunIfFields } from "./RunIfFields";
+import { NotifyIfFields } from "./NotifyIfFields";
 import styles from "../index.module.less";
 
 type CronJob = CronJobSpecOutput;
@@ -515,6 +517,10 @@ export function JobDrawer({
             options={timezoneOptions}
           />
         </Form.Item>
+
+        <RunIfFields form={form} />
+
+        <NotifyIfFields form={form} />
 
         <Form.Item
           name="task_type"

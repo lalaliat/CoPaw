@@ -5,6 +5,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,9 +15,12 @@ from apscheduler.triggers.interval import IntervalTrigger
 from agentscope_runtime.engine.schemas.exception import ConfigurationException
 
 from ...config import get_heartbeat_config, get_dream_cron
+from ...config.config import load_agent_config
 from ..inbox_store import append_event as append_inbox_event
+from ..inbox_trace_store import read_session_messages
 
 from ..console_push_store import append as push_store_append
+from .artifacts import extract_last_assistant_text
 from .executor import CronExecutor
 from .heartbeat import (
     is_cron_expression,
@@ -26,6 +30,8 @@ from .heartbeat import (
 )
 from .models import CronExecutionRecord, CronJobSpec, CronJobState
 from .repo.base import BaseJobRepository
+from .run_if import evaluate_run_if
+from .notify_if import evaluate_notify_if
 
 HEARTBEAT_JOB_ID = "_heartbeat"
 DREAM_JOB_ID = "_dream"
@@ -515,27 +521,116 @@ class CronManager:
             execution_result: dict[str, Any] = {}
             execution_succeeded = False
             delivery_failed = False
+            trigger_skipped = False
+            delivery_suppressed = False
+            notify_body: str | None = None
+            append_inbox = False
 
             try:
-                execution_result = await self._executor.execute(job)
-                execution_succeeded = True
-                delivery_failed = (
-                    execution_result.get("delivery_status") == "failed"
+                should_run, skip_reason = await self._should_run_job(
+                    job,
+                    trigger=trigger,
                 )
-                if delivery_failed:
-                    st.last_status = "error"
-                    delivery_error = (
-                        execution_result.get("delivery_error")
-                        or "delivery failed"
-                    )
-                    st.last_error = f"delivery failed: {delivery_error}"
+                if not should_run:
+                    trigger_skipped = True
+                    if skip_reason.startswith("run_if:"):
+                        st.last_status = "skipped"
+                        st.last_error = skip_reason
+                        execution_result = {
+                            "skipped": True,
+                            "skip_reason": skip_reason,
+                        }
+                        logger.info(
+                            "cron _execute_once: job_id=%s status=skipped "
+                            "reason=%s",
+                            job.id,
+                            skip_reason,
+                        )
+                    else:
+                        st.last_status = "error"
+                        st.last_error = skip_reason
+                        logger.warning(
+                            "cron _execute_once: job_id=%s status=error "
+                            "run_if=%s",
+                            job.id,
+                            skip_reason,
+                        )
                 else:
-                    st.last_status = "success"
-                    st.last_error = None
-                logger.info(
-                    "cron _execute_once: job_id=%s status=success",
-                    job.id,
-                )
+                    dispatch_to_channel = job.notify_if is None
+                    execution_result = await self._executor.execute(
+                        job,
+                        dispatch_to_channel=dispatch_to_channel,
+                    )
+                    execution_succeeded = True
+
+                    if job.notify_if:
+                        (
+                            should_notify,
+                            notify_reason,
+                        ) = await self._should_notify_job(
+                            job,
+                            trigger=trigger,
+                            last_status="success",
+                        )
+                        if not should_notify:
+                            if notify_reason.startswith("notify_if:exit_0"):
+                                delivery_suppressed = True
+                                st.last_status = "success"
+                                st.last_error = None
+                                execution_result["delivery_status"] = "skipped"
+                                logger.info(
+                                    "cron _execute_once: job_id=%s "
+                                    "delivery suppressed reason=%s",
+                                    job.id,
+                                    notify_reason,
+                                )
+                            else:
+                                st.last_status = "error"
+                                st.last_error = notify_reason
+                                logger.warning(
+                                    "cron _execute_once: job_id=%s "
+                                    "status=error notify_if=%s",
+                                    job.id,
+                                    notify_reason,
+                                )
+                        else:
+                            (
+                                delivery_failed,
+                                notify_body,
+                            ) = await self._deliver_job_result(
+                                job,
+                                execution_result,
+                            )
+                            if delivery_failed:
+                                st.last_status = "error"
+                                st.last_error = (
+                                    execution_result.get("delivery_error")
+                                    or "delivery failed"
+                                )
+                            else:
+                                st.last_status = "success"
+                                st.last_error = None
+                    else:
+                        delivery_failed = (
+                            execution_result.get("delivery_status") == "failed"
+                        )
+                        if delivery_failed:
+                            st.last_status = "error"
+                            delivery_error = (
+                                execution_result.get("delivery_error")
+                                or "delivery failed"
+                            )
+                            st.last_error = (
+                                f"delivery failed: {delivery_error}"
+                            )
+                        else:
+                            st.last_status = "success"
+                            st.last_error = None
+                    logger.info(
+                        "cron _execute_once: job_id=%s status=%s",
+                        job.id,
+                        st.last_status,
+                    )
             except asyncio.CancelledError:
                 st.last_status = "cancelled"
                 st.last_error = "Job was cancelled"
@@ -568,63 +663,215 @@ class CronManager:
                     limit=CRON_HISTORY_LIMIT,
                 )
                 self._history[job.id] = records
-                if execution_succeeded:
-                    if delivery_failed:
-                        try:
-                            await append_inbox_event(
-                                agent_id=self._agent_id,
-                                source_type="cron",
-                                source_id=job.id,
-                                event_type="cron_delivery_failed_fallback",
-                                status="error",
-                                severity="error",
-                                title=f"Cron result not delivered: {job.name}",
-                                body=(
-                                    "Task executed successfully, "
-                                    "but channel delivery failed."
+                append_inbox = (
+                    not trigger_skipped
+                    and not delivery_suppressed
+                    and execution_succeeded
+                )
+
+            if append_inbox:
+                if delivery_failed:
+                    try:
+                        await append_inbox_event(
+                            agent_id=self._agent_id,
+                            source_type="cron",
+                            source_id=job.id,
+                            event_type="cron_delivery_failed_fallback",
+                            status="error",
+                            severity="error",
+                            title=f"Cron result not delivered: {job.name}",
+                            body=(
+                                "Task executed successfully, "
+                                "but channel delivery failed."
+                            ),
+                            payload={
+                                "job_id": job.id,
+                                "job_name": job.name,
+                                "task_type": job.task_type,
+                                "trigger": trigger,
+                                "run_id": execution_result.get("run_id"),
+                                "delivery_error": execution_result.get(
+                                    "delivery_error",
                                 ),
-                                payload={
-                                    "job_id": job.id,
-                                    "job_name": job.name,
-                                    "task_type": job.task_type,
-                                    "trigger": trigger,
-                                    "run_id": execution_result.get("run_id"),
-                                    "delivery_error": execution_result.get(
-                                        "delivery_error",
-                                    ),
-                                },
-                            )
-                        except Exception:  # pylint: disable=broad-except
-                            logger.exception(
-                                "failed to append cron fallback event",
-                            )
-                    elif job.save_result_to_inbox:
-                        if job.task_type == "text":
-                            body = (job.text or "").strip()
-                        else:
-                            body = "Agent cron task finished successfully."
-                        try:
-                            await append_inbox_event(
-                                agent_id=self._agent_id,
-                                source_type="cron",
-                                source_id=job.id,
-                                event_type="cron_result",
-                                status="success",
-                                severity="info",
-                                title=f"Cron result: {job.name}",
-                                body=body,
-                                payload={
-                                    "job_id": job.id,
-                                    "job_name": job.name,
-                                    "task_type": job.task_type,
-                                    "trigger": trigger,
-                                    "run_id": execution_result.get("run_id"),
-                                    "save_result_to_inbox": (
-                                        job.save_result_to_inbox
-                                    ),
-                                },
-                            )
-                        except Exception:  # pylint: disable=broad-except
-                            logger.exception(
-                                "failed to append cron result inbox event",
-                            )
+                            },
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        logger.exception(
+                            "failed to append cron fallback event",
+                        )
+                elif job.save_result_to_inbox:
+                    if job.task_type == "text":
+                        body = (job.text or "").strip()
+                    elif notify_body:
+                        body = notify_body
+                    else:
+                        body = "Agent cron task finished successfully."
+                    try:
+                        await append_inbox_event(
+                            agent_id=self._agent_id,
+                            source_type="cron",
+                            source_id=job.id,
+                            event_type="cron_result",
+                            status="success",
+                            severity="info",
+                            title=f"Cron result: {job.name}",
+                            body=body,
+                            payload={
+                                "job_id": job.id,
+                                "job_name": job.name,
+                                "task_type": job.task_type,
+                                "trigger": trigger,
+                                "run_id": execution_result.get("run_id"),
+                                "save_result_to_inbox": (
+                                    job.save_result_to_inbox
+                                ),
+                            },
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        logger.exception(
+                            "failed to append cron result inbox event",
+                        )
+
+    def _resolve_workspace_dir(self) -> Path | None:
+        if self._agent_id:
+            try:
+                agent_config = load_agent_config(self._agent_id)
+                workspace = Path(agent_config.workspace_dir).expanduser()
+                if workspace.is_dir():
+                    return workspace
+            except Exception:  # pylint: disable=broad-except
+                logger.debug(
+                    "failed to resolve workspace for agent %s",
+                    self._agent_id,
+                    exc_info=True,
+                )
+        runner_workspace = getattr(self._runner, "workspace_dir", None)
+        if runner_workspace:
+            path = Path(runner_workspace).expanduser()
+            if path.is_dir():
+                return path
+        return None
+
+    async def _should_run_job(
+        self,
+        job: CronJobSpec,
+        *,
+        trigger: Literal["scheduled", "manual"],
+    ) -> tuple[bool, str]:
+        if job.run_if is None:
+            return True, ""
+        if trigger == "manual" and job.run_if.bypass_on_manual:
+            return True, ""
+
+        workspace_dir = self._resolve_workspace_dir()
+        if workspace_dir is None:
+            return False, "run_if:workspace_not_found"
+
+        decision, reason = await evaluate_run_if(
+            job.run_if,
+            workspace_dir=workspace_dir,
+        )
+        if decision == "run":
+            return True, ""
+        if decision == "skip":
+            return False, reason
+        return False, reason
+
+    async def _should_notify_job(
+        self,
+        job: CronJobSpec,
+        *,
+        trigger: Literal["scheduled", "manual"],
+        last_status: str,
+    ) -> tuple[bool, str]:
+        if job.notify_if is None:
+            return True, ""
+        if trigger == "manual" and job.notify_if.bypass_on_manual:
+            return True, ""
+
+        workspace_dir = self._resolve_workspace_dir()
+        if workspace_dir is None:
+            return False, "notify_if:workspace_not_found"
+
+        assert job.id is not None
+        extra_env = {
+            "CRON_JOB_ID": job.id,
+            "CRON_JOB_NAME": job.name,
+            "CRON_LAST_STATUS": last_status,
+            "CRON_TRIGGER": trigger,
+        }
+        decision, reason = await evaluate_notify_if(
+            job.notify_if,
+            workspace_dir=workspace_dir,
+            extra_env=extra_env,
+        )
+        if decision == "notify":
+            return True, ""
+        if decision == "skip":
+            return False, reason
+        return False, reason
+
+    async def _deliver_job_result(
+        self,
+        job: CronJobSpec,
+        execution_result: dict[str, Any],
+    ) -> tuple[bool, str | None]:
+        if job.task_type == "text":
+            summary = (
+                execution_result.get("final_text") or job.text or ""
+            ).strip()
+        else:
+            summary = await self._read_agent_run_summary(job, execution_result)
+
+        delivery_error = await self._deliver_summary_to_channel(job, summary)
+        execution_result["delivery_status"] = (
+            "failed" if delivery_error else "success"
+        )
+        execution_result["delivery_error"] = delivery_error
+        return bool(delivery_error), summary or None
+
+    async def _read_agent_run_summary(
+        self,
+        job: CronJobSpec,
+        execution_result: dict[str, Any],
+    ) -> str:
+        session_id = execution_result.get("session_id")
+        user_id = execution_result.get("user_id")
+        channel = execution_result.get("channel") or job.dispatch.channel
+        baseline_count = int(execution_result.get("baseline_count") or 0)
+        if not session_id or not user_id:
+            return "Agent cron task finished successfully."
+
+        messages = await read_session_messages(
+            runner=self._runner,
+            session_id=str(session_id),
+            user_id=str(user_id),
+            channel=str(channel),
+        )
+        delta = messages[baseline_count:]
+        summary = extract_last_assistant_text(delta)
+        return summary or "Agent cron task finished successfully."
+
+    async def _deliver_summary_to_channel(
+        self,
+        job: CronJobSpec,
+        summary: str,
+    ) -> str | None:
+        target = job.dispatch.target
+        dispatch_meta: Dict[str, Any] = dict(job.dispatch.meta or {})
+        try:
+            await self._channel_manager.send_text(
+                channel=job.dispatch.channel,
+                user_id=target.user_id,
+                session_id=target.session_id,
+                text=summary.strip(),
+                meta=dispatch_meta,
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.warning(
+                "cron delivery failed: job_id=%s error=%s",
+                job.id,
+                repr(e),
+            )
+            return repr(e)
+        return None

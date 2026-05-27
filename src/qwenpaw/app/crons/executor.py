@@ -23,7 +23,12 @@ class CronExecutor:
         self._channel_manager = channel_manager
 
     # pylint: disable=too-many-statements
-    async def execute(self, job: CronJobSpec) -> dict[str, Any]:
+    async def execute(
+        self,
+        job: CronJobSpec,
+        *,
+        dispatch_to_channel: bool = True,
+    ) -> dict[str, Any]:
         """Execute one job once.
 
         - task_type text: send fixed text to channel
@@ -52,6 +57,14 @@ class CronExecutor:
                 len(job.text or ""),
             )
             text_delivery_error: str | None = None
+            if not dispatch_to_channel:
+                return {
+                    "task_type": "text",
+                    "run_id": None,
+                    "final_text": job.text.strip(),
+                    "delivery_status": "deferred",
+                    "delivery_error": None,
+                }
             try:
                 await self._channel_manager.send_text(
                     channel=target_channel,
@@ -128,6 +141,8 @@ class CronExecutor:
         async def _run() -> None:
             nonlocal delivery_error
             async for event in self._runner.stream_query(req):
+                if not dispatch_to_channel:
+                    continue
                 try:
                     await self._channel_manager.send_event(
                         channel=target_channel,
@@ -164,8 +179,16 @@ class CronExecutor:
             return {
                 "task_type": "agent",
                 "run_id": run_id,
-                "delivery_status": "failed" if delivery_error else "success",
+                "delivery_status": (
+                    "deferred"
+                    if not dispatch_to_channel
+                    else ("failed" if delivery_error else "success")
+                ),
                 "delivery_error": delivery_error,
+                "session_id": req["session_id"],
+                "user_id": req["user_id"],
+                "channel": target_channel,
+                "baseline_count": baseline_count,
             }
         except asyncio.TimeoutError:
             logger.warning(

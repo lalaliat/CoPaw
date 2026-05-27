@@ -174,6 +174,8 @@ function CronJobsPage() {
           : "",
       },
       scheduleType: job.schedule?.type || "cron",
+      runIfEnabled: Boolean(job.run_if),
+      notifyIfEnabled: Boolean(job.notify_if),
     };
 
     if (job.schedule?.type === "once") {
@@ -333,6 +335,16 @@ function CronJobsPage() {
     delete processedValues.cronTime;
     delete processedValues.cronDaysOfWeek;
     delete processedValues.cronCustom;
+    delete processedValues.runIfEnabled;
+    delete processedValues.notifyIfEnabled;
+
+    if (!values.runIfEnabled) {
+      delete processedValues.run_if;
+    }
+
+    if (!values.notifyIfEnabled) {
+      delete processedValues.notify_if;
+    }
 
     if (processedValues.task_type === "text") {
       // Remove request object entirely for text tasks
@@ -778,6 +790,8 @@ function CronJobsPage() {
                       ? t("cronJobs.historyStatusRunning")
                       : record.status === "cancelled"
                       ? t("cronJobs.historyStatusCancelled")
+                      : record.status === "skipped"
+                      ? t("cronJobs.historyStatusSkipped")
                       : t("cronJobs.historyStatusFailed")}
                   </span>
                 </div>
