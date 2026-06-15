@@ -16,7 +16,7 @@ import type {
   CronDispatchTargetItem,
   CronJobSpecOutput,
 } from "../../../../api/types";
-import { DEFAULT_FORM_VALUES } from "./constants";
+import { DEFAULT_FORM_VALUES, type CronJobFormValues } from "./constants";
 import { useTimezoneOptions } from "../../../../hooks/useTimezoneOptions";
 import styles from "../index.module.less";
 
@@ -26,7 +26,7 @@ type SelectOption = { value: string; label: string };
 interface JobDrawerProps {
   open: boolean;
   editingJob: CronJob | null;
-  form: FormInstance<CronJob>;
+  form: FormInstance<CronJobFormValues>;
   saving: boolean;
   targetItems: CronDispatchTargetItem[];
   targetChannels: string[];
@@ -527,6 +527,7 @@ export function JobDrawer({
           <Select>
             <Select.Option value="text">text</Select.Option>
             <Select.Option value="agent">agent</Select.Option>
+            <Select.Option value="script">script</Select.Option>
           </Select>
         </Form.Item>
 
@@ -538,6 +539,7 @@ export function JobDrawer({
             const taskType = getFieldValue("task_type");
             const textRequired = taskType === "text";
             const agentRequired = taskType === "agent";
+            const scriptRequired = taskType === "script";
 
             return (
               <>
@@ -545,6 +547,7 @@ export function JobDrawer({
                   name="text"
                   label={t("cronJobs.text")}
                   required={textRequired}
+                  hidden={!textRequired}
                   rules={
                     textRequired
                       ? [
@@ -567,6 +570,7 @@ export function JobDrawer({
                   name={["request", "input"]}
                   label={t("cronJobs.requestInput")}
                   required={agentRequired}
+                  hidden={!agentRequired}
                   rules={[
                     ...(agentRequired
                       ? [
@@ -603,94 +607,198 @@ export function JobDrawer({
                     style={{ fontFamily: "monospace", fontSize: 12 }}
                   />
                 </Form.Item>
+
+                {scriptRequired && (
+                  <>
+                    <Form.Item
+                      name={["script", "path"]}
+                      label={t("cronJobs.scriptPath")}
+                      rules={[
+                        {
+                          required: true,
+                          message: t("cronJobs.pleaseInputScriptPath"),
+                        },
+                      ]}
+                      tooltip={t("cronJobs.scriptPathTooltip")}
+                    >
+                      <Input placeholder="/opt/scripts/daily_backup.sh" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name={["script", "args"]}
+                      label={t("cronJobs.scriptArgs")}
+                      tooltip={t("cronJobs.scriptArgsTooltip")}
+                      extra={
+                        <span className={styles.formExtraText}>
+                          {t("cronJobs.scriptArgsExample")}
+                        </span>
+                      }
+                      rules={[
+                        {
+                          validator: (_, value) => {
+                            if (!value) return Promise.resolve();
+                            try {
+                              const parsed = JSON.parse(value);
+                              if (!Array.isArray(parsed)) {
+                                return Promise.reject(
+                                  new Error(t("cronJobs.scriptArgsInvalid")),
+                                );
+                              }
+                              return Promise.resolve();
+                            } catch {
+                              return Promise.reject(
+                                new Error(t("cronJobs.invalidJsonFormat")),
+                              );
+                            }
+                          },
+                        },
+                      ]}
+                    >
+                      <Input.TextArea
+                        rows={3}
+                        placeholder='["--dry-run"]'
+                        style={{ fontFamily: "monospace", fontSize: 12 }}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      name={["script", "interpreter"]}
+                      label={t("cronJobs.scriptInterpreter")}
+                      tooltip={t("cronJobs.scriptInterpreterTooltip")}
+                    >
+                      <Select>
+                        <Select.Option value="auto">auto</Select.Option>
+                        <Select.Option value="bash">bash</Select.Option>
+                        <Select.Option value="sh">sh</Select.Option>
+                        <Select.Option value="python3">python3</Select.Option>
+                        <Select.Option value="python">python</Select.Option>
+                        <Select.Option value="node">node</Select.Option>
+                      </Select>
+                    </Form.Item>
+
+                    <Form.Item
+                      name={["script", "cwd"]}
+                      label={t("cronJobs.scriptCwd")}
+                      tooltip={t("cronJobs.scriptCwdTooltip")}
+                    >
+                      <Input placeholder="/opt/scripts" />
+                    </Form.Item>
+                  </>
+                )}
               </>
             );
           }}
         </Form.Item>
 
-        <Form.Item name={["dispatch", "type"]} label="DispatchType" hidden>
-          <Input disabled value="channel" />
-        </Form.Item>
-
         <Form.Item
-          name={["dispatch", "channel"]}
-          label={t("cronJobs.dispatchChannel")}
-          rules={[
-            { required: true, message: t("cronJobs.pleaseInputChannel") },
-          ]}
-          tooltip={t("cronJobs.dispatchChannelTooltip")}
+          noStyle
+          shouldUpdate={(prev, cur) => prev.task_type !== cur.task_type}
         >
-          <Select
-            showSearch
-            loading={targetsLoading}
-            placeholder="console"
-            options={channelOptions}
-            onSearch={setChannelSearch}
-            onBlur={() => setChannelSearch("")}
-            notFoundContent="输入自定义值后按 Enter"
-            filterOption={(input, option) =>
-              (option?.label?.toString() || "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
+          {({ getFieldValue }) =>
+            getFieldValue("task_type") === "script" ? null : (
+              <>
+                <Form.Item
+                  name={["dispatch", "type"]}
+                  label="DispatchType"
+                  hidden
+                >
+                  <Input disabled value="channel" />
+                </Form.Item>
 
-        <Form.Item
-          name={["dispatch", "target", "user_id"]}
-          label={t("cronJobs.dispatchTargetUserId")}
-          rules={[{ required: true, message: t("cronJobs.pleaseInputUserId") }]}
-          tooltip={t("cronJobs.dispatchTargetUserIdTooltip")}
-        >
-          <Select
-            showSearch
-            loading={targetsLoading}
-            placeholder="admin"
-            options={userOptions}
-            onSearch={setUserSearch}
-            onBlur={() => setUserSearch("")}
-            notFoundContent="输入自定义值后按 Enter"
-            filterOption={(input, option) =>
-              (option?.label?.toString() || "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
+                <Form.Item
+                  name={["dispatch", "channel"]}
+                  label={t("cronJobs.dispatchChannel")}
+                  rules={[
+                    {
+                      required: true,
+                      message: t("cronJobs.pleaseInputChannel"),
+                    },
+                  ]}
+                  tooltip={t("cronJobs.dispatchChannelTooltip")}
+                >
+                  <Select
+                    showSearch
+                    loading={targetsLoading}
+                    placeholder="console"
+                    options={channelOptions}
+                    onSearch={setChannelSearch}
+                    onBlur={() => setChannelSearch("")}
+                    notFoundContent="输入自定义值后按 Enter"
+                    filterOption={(input, option) =>
+                      (option?.label?.toString() || "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                  />
+                </Form.Item>
 
-        <Form.Item
-          name={["dispatch", "target", "session_id"]}
-          label={t("cronJobs.dispatchTargetSessionId")}
-          rules={[
-            { required: true, message: t("cronJobs.pleaseInputSessionId") },
-          ]}
-          tooltip={t("cronJobs.dispatchTargetSessionIdTooltip")}
-        >
-          <Select
-            showSearch
-            loading={targetsLoading}
-            placeholder="default"
-            options={sessionOptions}
-            onSearch={setSessionSearch}
-            onBlur={() => setSessionSearch("")}
-            notFoundContent="输入自定义值后按 Enter"
-            filterOption={(input, option) =>
-              (option?.label?.toString() || "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
+                <Form.Item
+                  name={["dispatch", "target", "user_id"]}
+                  label={t("cronJobs.dispatchTargetUserId")}
+                  rules={[
+                    {
+                      required: true,
+                      message: t("cronJobs.pleaseInputUserId"),
+                    },
+                  ]}
+                  tooltip={t("cronJobs.dispatchTargetUserIdTooltip")}
+                >
+                  <Select
+                    showSearch
+                    loading={targetsLoading}
+                    placeholder="admin"
+                    options={userOptions}
+                    onSearch={setUserSearch}
+                    onBlur={() => setUserSearch("")}
+                    notFoundContent="输入自定义值后按 Enter"
+                    filterOption={(input, option) =>
+                      (option?.label?.toString() || "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                  />
+                </Form.Item>
 
-        <Form.Item
-          name={["dispatch", "mode"]}
-          label={t("cronJobs.dispatchMode")}
-          tooltip={t("cronJobs.dispatchModeTooltip")}
-        >
-          <Select>
-            <Select.Option value="stream">stream</Select.Option>
-            <Select.Option value="final">final</Select.Option>
-          </Select>
+                <Form.Item
+                  name={["dispatch", "target", "session_id"]}
+                  label={t("cronJobs.dispatchTargetSessionId")}
+                  rules={[
+                    {
+                      required: true,
+                      message: t("cronJobs.pleaseInputSessionId"),
+                    },
+                  ]}
+                  tooltip={t("cronJobs.dispatchTargetSessionIdTooltip")}
+                >
+                  <Select
+                    showSearch
+                    loading={targetsLoading}
+                    placeholder="default"
+                    options={sessionOptions}
+                    onSearch={setSessionSearch}
+                    onBlur={() => setSessionSearch("")}
+                    notFoundContent="输入自定义值后按 Enter"
+                    filterOption={(input, option) =>
+                      (option?.label?.toString() || "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  name={["dispatch", "mode"]}
+                  label={t("cronJobs.dispatchMode")}
+                  tooltip={t("cronJobs.dispatchModeTooltip")}
+                >
+                  <Select>
+                    <Select.Option value="stream">stream</Select.Option>
+                    <Select.Option value="final">final</Select.Option>
+                  </Select>
+                </Form.Item>
+              </>
+            )
+          }
         </Form.Item>
 
         <Form.Item

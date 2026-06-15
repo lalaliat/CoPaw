@@ -13,6 +13,11 @@ from ..inbox_trace_store import (
     read_session_messages,
 )
 from .models import CronJobSpec
+from .script_runner import (
+    CronScriptError,
+    build_script_inbox_body,
+    run_cron_script,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +34,17 @@ class CronExecutor:
         - task_type text: send fixed text to channel
         - task_type agent: ask agent with prompt, send reply to channel (
             stream_query + send_event)
+        - task_type script: execute configured script file directly
         """
+        if job.task_type == "script":
+            return await self._execute_script(job)
+
+        if job.dispatch is None:
+            raise RuntimeError(
+                f"cron job {job.id} requires dispatch for "
+                f"task_type={job.task_type}",
+            )
+
         target_user_id = job.dispatch.target.user_id
         target_session_id = job.dispatch.target.session_id
         target_channel = job.dispatch.channel
@@ -229,3 +244,46 @@ class CronExecutor:
                 error=repr(e),
             )
             raise
+
+    async def _execute_script(self, job: CronJobSpec) -> dict[str, Any]:
+        assert job.script is not None
+        logger.info(
+            "cron script: job_id=%s path=%s timeout=%ss",
+            job.id,
+            job.script.path,
+            job.runtime.timeout_seconds,
+        )
+        try:
+            result = await run_cron_script(
+                job.script,
+                timeout_seconds=job.runtime.timeout_seconds,
+            )
+        except CronScriptError:
+            raise
+        except Exception as exc:  # pylint: disable=broad-except
+            raise RuntimeError(f"Script execution failed: {exc!r}") from exc
+
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        if result.returncode != 0:
+            detail = stderr.strip() or stdout.strip() or "no output"
+            raise RuntimeError(
+                "Script exited with code "
+                f"{result.returncode}: {detail[:500]}",
+            )
+
+        return {
+            "task_type": "script",
+            "run_id": None,
+            "exit_code": result.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "script_path": job.script.path,
+            "inbox_body": build_script_inbox_body(
+                exit_code=result.returncode,
+                stdout=stdout,
+                stderr=stderr,
+                script_path=job.script.path,
+            ),
+            "delivery_status": "success",
+        }

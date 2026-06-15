@@ -177,7 +177,24 @@ class CronJobRequest(BaseModel):
     user_id: Optional[str] = None
 
 
-TaskType = Literal["text", "agent"]
+ScriptInterpreter = Literal["auto", "bash", "sh", "python", "python3", "node"]
+TaskType = Literal["text", "agent", "script"]
+
+
+class ScriptSpec(BaseModel):
+    path: str
+    args: list[str] = Field(default_factory=list)
+    interpreter: ScriptInterpreter = "auto"
+    cwd: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_script_fields(self) -> "ScriptSpec":
+        if not self.path.strip():
+            raise ValueError("script.path is empty")
+        self.path = self.path.strip()
+        if self.cwd is not None:
+            self.cwd = self.cwd.strip() or None
+        return self
 
 
 class CronJobSpec(BaseModel):
@@ -189,7 +206,8 @@ class CronJobSpec(BaseModel):
     task_type: TaskType = "agent"
     text: Optional[str] = None
     request: Optional[CronJobRequest] = None
-    dispatch: DispatchSpec
+    script: Optional[ScriptSpec] = None
+    dispatch: Optional[DispatchSpec] = None
     save_result_to_inbox: Optional[bool] = None
 
     runtime: JobRuntimeSpec = Field(default_factory=JobRuntimeSpec)
@@ -200,10 +218,16 @@ class CronJobSpec(BaseModel):
         if self.task_type == "text":
             if not (self.text and self.text.strip()):
                 raise ValueError("task_type is text but text is empty")
+            if self.dispatch is None:
+                raise ValueError("task_type is text but dispatch is missing")
             self.request = None
+            self.script = None
         elif self.task_type == "agent":
             if self.request is None:
                 raise ValueError("task_type is agent but request is missing")
+            if self.dispatch is None:
+                raise ValueError("task_type is agent but dispatch is missing")
+            self.script = None
             # Keep request.user_id and request.session_id in sync with target
             target = self.dispatch.target
             self.request = self.request.model_copy(
@@ -212,6 +236,12 @@ class CronJobSpec(BaseModel):
                     "session_id": target.session_id,
                 },
             )
+        elif self.task_type == "script":
+            if self.script is None:
+                raise ValueError("task_type is script but script is missing")
+            self.text = None
+            self.request = None
+            self.dispatch = None
         if self.save_result_to_inbox is None:
             # Product rule:
             # - text + recurring(cron) => default OFF

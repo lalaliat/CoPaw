@@ -26,13 +26,14 @@ export interface CronJobDispatch {
   channel?: string;
   target: CronJobTarget;
   mode?: "stream" | "final";
-  meta?: Record<string, unknown>;
+  meta?: Record<string, object | undefined>;
 }
 
 export interface CronJobRuntime {
   max_concurrency?: number;
   timeout_seconds?: number;
   misfire_grace_seconds?: number;
+  share_session?: boolean;
 }
 
 export interface CronJobRequest {
@@ -42,16 +43,24 @@ export interface CronJobRequest {
   [key: string]: unknown;
 }
 
+export interface CronJobScript {
+  path: string;
+  args?: string[];
+  interpreter?: "auto" | "bash" | "sh" | "python" | "python3" | "node";
+  cwd?: string | null;
+}
+
 export interface CronJobSpecInput {
   id: string;
   name: string;
   enabled?: boolean;
   save_result_to_inbox?: boolean;
   schedule: CronJobSchedule;
-  task_type?: "text" | "agent";
+  task_type?: "text" | "agent" | "script";
   text?: string;
   request?: CronJobRequest;
-  dispatch: CronJobDispatch;
+  script?: CronJobScript;
+  dispatch?: CronJobDispatch | null;
   runtime?: CronJobRuntime;
   meta?: Record<string, unknown>;
 }

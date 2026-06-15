@@ -18,6 +18,7 @@ from ..inbox_store import append_event as append_inbox_event
 
 from ..console_push_store import append as push_store_append
 from .executor import CronExecutor
+from .script_runner import build_script_inbox_body
 from .heartbeat import (
     is_cron_expression,
     parse_heartbeat_cron,
@@ -299,10 +300,14 @@ class CronManager:
             "cron run_job (async): job_id=%s channel=%s task_type=%s "
             "target_user_id=%s target_session_id=%s",
             job_id,
-            job.dispatch.channel,
+            job.dispatch.channel if job.dispatch else "-",
             job.task_type,
-            (job.dispatch.target.user_id or "")[:40],
-            (job.dispatch.target.session_id or "")[:40],
+            ((job.dispatch.target.user_id or "")[:40] if job.dispatch else ""),
+            (
+                (job.dispatch.target.session_id or "")[:40]
+                if job.dispatch
+                else ""
+            ),
         )
         task = asyncio.create_task(
             self._execute_once(
@@ -331,9 +336,11 @@ class CronManager:
                 repr(exc),
             )
             # Push error to the console for the frontend to display.
-            # Agent cron jobs skip push bubbles.
-            session_id = job.dispatch.target.session_id
-            if session_id and job.task_type != "agent":
+            # Agent/script cron jobs skip push bubbles.
+            session_id = (
+                job.dispatch.target.session_id if job.dispatch else None
+            )
+            if session_id and job.task_type not in ("agent", "script"):
                 error_text = f"❌ Cron job [{job.name}] failed: {exc}"
                 asyncio.ensure_future(
                     push_store_append(session_id, error_text),
@@ -610,6 +617,21 @@ class CronManager:
                     elif job.save_result_to_inbox:
                         if job.task_type == "text":
                             body = (job.text or "").strip()
+                        elif job.task_type == "script":
+                            body = execution_result.get("inbox_body") or (
+                                build_script_inbox_body(
+                                    exit_code=execution_result.get(
+                                        "exit_code",
+                                    ),
+                                    stdout=execution_result.get("stdout")
+                                    or "",
+                                    stderr=execution_result.get("stderr")
+                                    or "",
+                                    script_path=(
+                                        job.script.path if job.script else ""
+                                    ),
+                                )
+                            )
                         else:
                             body = "Agent cron task finished successfully."
                         try:
@@ -628,6 +650,9 @@ class CronManager:
                                     "task_type": job.task_type,
                                     "trigger": trigger,
                                     "run_id": execution_result.get("run_id"),
+                                    "exit_code": execution_result.get(
+                                        "exit_code",
+                                    ),
                                     "save_result_to_inbox": (
                                         job.save_result_to_inbox
                                     ),
@@ -637,3 +662,41 @@ class CronManager:
                             logger.exception(
                                 "failed to append cron result inbox event",
                             )
+                elif (
+                    job.save_result_to_inbox
+                    and job.task_type == "script"
+                    and st.last_status == "error"
+                ):
+                    script_path = job.script.path if job.script else ""
+                    body = build_script_inbox_body(
+                        exit_code=None,
+                        stdout="",
+                        stderr="",
+                        script_path=script_path,
+                        error=st.last_error,
+                    )
+                    try:
+                        await append_inbox_event(
+                            agent_id=self._agent_id,
+                            source_type="cron",
+                            source_id=job.id,
+                            event_type="cron_result",
+                            status="error",
+                            severity="error",
+                            title=f"Cron script failed: {job.name}",
+                            body=body,
+                            payload={
+                                "job_id": job.id,
+                                "job_name": job.name,
+                                "task_type": job.task_type,
+                                "trigger": trigger,
+                                "error": st.last_error,
+                                "save_result_to_inbox": (
+                                    job.save_result_to_inbox
+                                ),
+                            },
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        logger.exception(
+                            "failed to append cron script failure inbox event",
+                        )

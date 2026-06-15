@@ -30,6 +30,7 @@ import {
   TemplatePickerModal,
   useCronJobs,
   DEFAULT_FORM_VALUES,
+  type CronJobFormValues,
 } from "./components";
 import { parseCron, serializeCron } from "./components/parseCron";
 import { PageHeader } from "@/components/PageHeader";
@@ -89,7 +90,7 @@ function CronJobsPage() {
     Set<string>
   >(new Set());
   const [userTimezone, setUserTimezone] = useState("UTC");
-  const [form] = Form.useForm<CronJob>();
+  const [form] = Form.useForm<CronJobFormValues>();
   const userTimezoneRef = useRef("UTC");
   const [targetItems, setTargetItems] = useState<CronDispatchTargetItem[]>([]);
   const [targetChannels, setTargetChannels] = useState<string[]>(["console"]);
@@ -139,7 +140,7 @@ function CronJobsPage() {
         ...DEFAULT_FORM_VALUES.schedule,
         timezone: userTimezoneRef.current,
       },
-    });
+    } as CronJobFormValues);
     setDrawerOpen(true);
   };
 
@@ -158,7 +159,7 @@ function CronJobsPage() {
         timezone: userTimezoneRef.current,
       },
       ...templateValues,
-    });
+    } as CronJobFormValues);
     setDrawerOpen(true);
   };
 
@@ -172,6 +173,12 @@ function CronJobsPage() {
         input: job.request?.input
           ? JSON.stringify(job.request.input, null, 2)
           : "",
+      },
+      script: {
+        path: job.script?.path || "",
+        args: JSON.stringify(job.script?.args || [], null, 2),
+        interpreter: job.script?.interpreter || "auto",
+        cwd: job.script?.cwd || "",
       },
       scheduleType: job.schedule?.type || "cron",
     };
@@ -337,7 +344,9 @@ function CronJobsPage() {
     if (processedValues.task_type === "text") {
       // Remove request object entirely for text tasks
       delete processedValues.request;
+      delete processedValues.script;
     } else if (processedValues.task_type === "agent") {
+      delete processedValues.script;
       //Ensure request object exists
       if (!processedValues.request) {
         processedValues.request = {};
@@ -355,6 +364,29 @@ function CronJobsPage() {
         } catch (error) {
           console.error("❌ Failed to parse request.input JSON:", error);
         }
+      }
+    } else if (processedValues.task_type === "script") {
+      delete processedValues.request;
+      delete processedValues.text;
+      delete processedValues.dispatch;
+      if (!processedValues.script) {
+        processedValues.script = { path: "", args: [], interpreter: "auto" };
+      }
+      if (
+        processedValues.script.args &&
+        typeof processedValues.script.args === "string"
+      ) {
+        try {
+          processedValues.script.args = JSON.parse(processedValues.script.args);
+        } catch (error) {
+          console.error("❌ Failed to parse script.args JSON:", error);
+        }
+      }
+      if (
+        typeof processedValues.script.cwd === "string" &&
+        !processedValues.script.cwd.trim()
+      ) {
+        delete processedValues.script.cwd;
       }
     }
 

@@ -43,6 +43,12 @@ export function useCronJobs() {
       if (cleaned.includes("task_type is agent but request is missing")) {
         return t("cronJobs.validation.requestRequired");
       }
+      if (cleaned.includes("task_type is script but script is missing")) {
+        return t("cronJobs.validation.scriptRequired");
+      }
+      if (cleaned.includes("script.path is empty")) {
+        return t("cronJobs.validation.scriptPathRequired");
+      }
       if (cleaned.includes("cron must have 5 fields")) {
         return t("cronJobs.validation.invalidCronExpression");
       }

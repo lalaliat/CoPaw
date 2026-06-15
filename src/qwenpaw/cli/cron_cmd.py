@@ -233,6 +233,10 @@ def _build_spec_from_cli(
     save_result_to_inbox: Optional[bool] = None,
     share_session: bool = True,
     timeout_seconds: int = 120,
+    script_path: Optional[str] = None,
+    script_args: Optional[tuple[str, ...]] = None,
+    script_interpreter: str = "auto",
+    script_cwd: Optional[str] = None,
 ) -> dict:
     """Build CronJobSpec JSON payload from CLI args (no id)."""
     schedule = _build_schedule_from_cli(
@@ -305,6 +309,31 @@ def _build_spec_from_cli(
         if save_result_to_inbox is not None:
             payload["save_result_to_inbox"] = save_result_to_inbox
         return payload
+    if task_type == "script":
+        if not (script_path and script_path.strip()):
+            raise click.UsageError(
+                "--script-path is required when task type is 'script'",
+            )
+        script_payload: dict = {
+            "path": script_path.strip(),
+            "args": list(script_args or ()),
+            "interpreter": script_interpreter,
+        }
+        if script_cwd and script_cwd.strip():
+            script_payload["cwd"] = script_cwd.strip()
+        payload = {
+            "id": "",
+            "name": name,
+            "enabled": enabled,
+            "schedule": schedule,
+            "task_type": "script",
+            "script": script_payload,
+            "runtime": runtime,
+            "meta": {},
+        }
+        if save_result_to_inbox is not None:
+            payload["save_result_to_inbox"] = save_result_to_inbox
+        return payload
     raise click.UsageError(f"Unsupported task type: {task_type}")
 
 
@@ -323,12 +352,13 @@ def _build_spec_from_cli(
 @click.option(
     "--type",
     "task_type",
-    type=click.Choice(["text", "agent"], case_sensitive=False),
+    type=click.Choice(["text", "agent", "script"], case_sensitive=False),
     default=None,
     help=(
         "Task type: 'text' sends fixed content to the channel; "
         "'agent' sends a question to the agent and delivers the reply to the "
-        "channel. Required when not using -f/--file."
+        "channel; 'script' executes a script file directly. "
+        "Required when not using -f/--file."
     ),
 )
 @click.option(
@@ -431,8 +461,34 @@ def _build_spec_from_cli(
     help=(
         "Content: for 'text' tasks this is the message sent to the channel; "
         "for 'agent' tasks this is the prompt/question sent to the agent. "
-        "Required for both task types."
+        "Required for text and agent task types."
     ),
+)
+@click.option(
+    "--script-path",
+    default=None,
+    help="Script file path for 'script' tasks. Required when --type script.",
+)
+@click.option(
+    "--script-arg",
+    "script_args",
+    multiple=True,
+    help="Argument passed to the script. Repeat for multiple args.",
+)
+@click.option(
+    "--script-interpreter",
+    type=click.Choice(
+        ["auto", "bash", "sh", "python", "python3", "node"],
+        case_sensitive=False,
+    ),
+    default="auto",
+    show_default=True,
+    help="Interpreter used to run the script file.",
+)
+@click.option(
+    "--script-cwd",
+    default=None,
+    help="Working directory for script execution.",
 )
 @click.option(
     "--timezone",
@@ -479,7 +535,7 @@ def _build_spec_from_cli(
     default=120,
     show_default=True,
     help=(
-        "Maximum execution time in seconds for agent tasks. "
+        "Maximum execution time in seconds. "
         "If the task takes longer, it will be cancelled. "
         "Increase for complex tasks (e.g. --timeout 1800)."
     ),
@@ -517,6 +573,10 @@ def create_job(
     save_result_to_inbox: Optional[bool],
     share_session: bool,
     timeout_seconds: int,
+    script_path: Optional[str],
+    script_args: tuple[str, ...],
+    script_interpreter: str,
+    script_cwd: Optional[str],
     base_url: Optional[str],
     agent_id: str,
 ) -> None:
@@ -534,13 +594,19 @@ def create_job(
     if file_ is not None:
         payload = json.loads(file_.read_text(encoding="utf-8"))
     else:
-        for value, label in [
+        required_fields = [
             (task_type, "--type"),
             (name, "--name"),
-            (channel, "--channel"),
-            (target_user, "--target-user"),
-            (target_session, "--target-session"),
-        ]:
+        ]
+        if task_type != "script":
+            required_fields.extend(
+                [
+                    (channel, "--channel"),
+                    (target_user, "--target-user"),
+                    (target_session, "--target-session"),
+                ],
+            )
+        for value, label in required_fields:
             if not value or (isinstance(value, str) and not value.strip()):
                 raise click.UsageError(
                     f"When creating without -f/--file, {label} is required",
@@ -574,6 +640,10 @@ def create_job(
             save_result_to_inbox=save_result_to_inbox,
             share_session=share_session,
             timeout_seconds=timeout_seconds,
+            script_path=script_path,
+            script_args=script_args,
+            script_interpreter=script_interpreter,
+            script_cwd=script_cwd,
         )
     with client(base_url) as c:
         headers = {"X-Agent-Id": agent_id}
