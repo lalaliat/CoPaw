@@ -843,7 +843,7 @@ def run_doctor_checks(
             click.echo(click.style("Note:", fg="yellow") + f" {mismatch}")
 
     click.echo("\n=== API ===")
-    health_url = f"{base}/api/agent/health"
+    health_url = f"{base}/api/healthz"
     version_url = f"{base}/api/version"
     try:
         health_resp = _http_get(health_url, timeout=timeout)
@@ -863,6 +863,14 @@ def run_doctor_checks(
             click.echo(
                 click.style("OK", fg="green")
                 + f" — health ({health_url}, HTTP 200)",
+            )
+        elif health_resp.status_code == 503:
+            failed = True
+            click.echo(
+                click.style("WARN", fg="yellow")
+                + f" — health ({health_url}, HTTP 503): "
+                "server is still starting up",
+                err=True,
             )
         else:
             failed = True
