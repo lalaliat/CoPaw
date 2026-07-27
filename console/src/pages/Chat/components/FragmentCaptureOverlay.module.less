@@ -1,0 +1,56 @@
+.captureButton {
+  position: fixed;
+  z-index: 1100;
+  transform: translateX(-50%);
+  animation: fadeIn 0.15s ease;
+  pointer-events: auto;
+}
+
+.pinButton {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #ff7f16;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(255, 127, 22, 0.35);
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #e66d0e;
+    box-shadow: 0 3px 12px rgba(255, 127, 22, 0.45);
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+:global(.dark-mode) {
+  .pinButton {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}

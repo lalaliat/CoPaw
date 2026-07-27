@@ -72,6 +72,7 @@ import {
   type HeadlineStreamFilterState,
   stripScrollHeadlineTextBlocks,
 } from "./headlineFilter";
+import { FragmentCaptureOverlay } from "./components/FragmentCaptureOverlay";
 
 interface ApprovalMessageData {
   requestId: string;
@@ -3057,6 +3058,8 @@ export default function ChatPage() {
             options={options}
           />
         </div>
+
+        <FragmentCaptureOverlay />
 
         {/* Rate-limit guidance banner */}
         {rateLimitAlternatives.length > 0 && (

@@ -29,6 +29,7 @@ import CodingPage from "../../pages/Coding";
 const ChannelsPage = lazyImportWithRetry("../../pages/Control/Channels");
 const SessionsPage = lazyImportWithRetry("../../pages/Control/Sessions");
 const InboxPage = lazyImportWithRetry("../../pages/Inbox");
+const FragmentsPage = lazyImportWithRetry("../../pages/Fragments");
 const CronJobsPage = lazyImportWithRetry("../../pages/Control/CronJobs");
 const HeartbeatPage = lazyImportWithRetry("../../pages/Control/Heartbeat");
 const AgentConfigPage = lazyImportWithRetry("../../pages/Agent/Config");
@@ -86,6 +87,7 @@ export const BUILTIN_ROUTES: Route[] = [
   { id: "core.channels", path: "/channels", component: ChannelsPage },
   { id: "core.sessions", path: "/sessions", component: SessionsPage },
   { id: "core.inbox", path: "/inbox", component: InboxPage },
+  { id: "core.fragments", path: "/fragments", component: FragmentsPage },
   { id: "core.cron-jobs", path: "/cron-jobs", component: CronJobsPage },
   { id: "core.heartbeat", path: "/heartbeat", component: HeartbeatPage },
   { id: "core.skills", path: "/skills", component: SkillsPage },

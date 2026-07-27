@@ -1,0 +1,320 @@
+.fragmentsPage {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pageContent {
+  flex: 1;
+  padding: 0 24px 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.selectedCount {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 500;
+}
+
+.loadingWrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 80px 0;
+}
+
+.emptyState {
+  padding: 80px 0;
+}
+
+/* ─── Board (freeform draggable) ──────────────────────────────────────────── */
+.board {
+  position: relative;
+  min-height: 600px;
+  width: 100%;
+  border-radius: 16px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 127, 22, 0.03) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  border: 1px dashed rgba(0, 0, 0, 0.06);
+  user-select: none;
+}
+
+/* ─── Grid (fallback) ─────────────────────────────────────────────────────── */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Fragment card ───────────────────────────────────────────────────────── */
+.fragmentCard {
+  background: #fff;
+  border-radius: 12px;
+  border: 1.5px solid rgba(0, 0, 0, 0.06);
+  padding: 14px;
+  cursor: grab;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+
+  &:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  &.selected {
+    border-color: #ff7f16;
+    box-shadow: 0 0 0 2px rgba(255, 127, 22, 0.18);
+  }
+
+  &.generated {
+    border-style: dashed;
+    border-color: rgba(235, 47, 150, 0.3);
+  }
+
+  &.dragging {
+    cursor: grabbing;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    transform: scale(1.03);
+    opacity: 0.95;
+  }
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.stanceTag {
+  font-size: 11px;
+  line-height: 1;
+  padding: 1px 5px;
+}
+
+.dragHandle {
+  margin-left: auto;
+  color: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+}
+
+.cardBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.surface {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.gist {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  margin-bottom: 0;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cardBottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.topicTag {
+  font-size: 11px;
+  color: #ff7f16;
+  background: rgba(255, 127, 22, 0.07);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.sparkIcon {
+  color: #faad14;
+  cursor: pointer;
+}
+
+.cardDate {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.3);
+  margin-top: 6px;
+}
+
+.createHint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.detailContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detailMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.detailSource {
+  font-size: 14px;
+}
+
+.sourceBlock {
+  margin-top: 8px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.collideLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 0;
+}
+
+.collideResult {
+  line-height: 1.7;
+
+  h3 {
+    margin-top: 24px;
+    margin-bottom: 8px;
+  }
+
+  ul,
+  ol {
+    padding-left: 24px;
+  }
+}
+
+/* ─── Dark mode ─────────────────────────────────────────────────────────────── */
+:global(.dark-mode) {
+  .board {
+    background: radial-gradient(
+      circle,
+      rgba(255, 127, 22, 0.04) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .fragmentCard {
+    background: #1a1a1a;
+    border-color: rgba(255, 255, 255, 0.08);
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    &.dragging {
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  .gist {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .selectedCount {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .cardDate {
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  .dragHandle {
+    color: rgba(255, 255, 255, 0.2);
+  }
+
+  .sourceBlock {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .createHint {
+    color: rgba(255, 255, 255, 0.45);
+  }
+}
+
+/* ─── Mobile ────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .pageContent {
+    padding: 0 12px 12px;
+  }
+
+  .board {
+    overflow-x: auto;
+  }
+
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

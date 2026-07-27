@@ -27,6 +27,7 @@ import { userTimezoneApi } from "./modules/userTimezone";
 import { languageApi } from "./modules/language";
 import { backupApi } from "./modules/backup";
 import { consoleApi } from "./modules/console";
+import { fragmentsApi } from "./modules/fragments";
 import { accessControlApi } from "./modules/accessControl";
 
 export const api = {
@@ -96,6 +97,9 @@ export const api = {
 
   // Console
   ...consoleApi,
+
+  // Fragments
+  ...fragmentsApi,
 
   // Access Control
   ...accessControlApi,

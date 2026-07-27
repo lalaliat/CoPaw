@@ -46,6 +46,7 @@ import {
   SparkVoiceChat01Line,
   SparkWifiLine,
 } from "@agentscope-ai/icons";
+import { FlaskConical } from "lucide-react";
 import i18next from "i18next";
 import { menuRegistry } from "../../plugins/registry/store";
 import type { MenuItem } from "../../plugins/registry/types";
@@ -63,6 +64,15 @@ export const BUILTIN_MENU: MenuItem[] = [
     icon: SparkEmailLine,
     route: "core.inbox",
     order: 10,
+  },
+
+  {
+    id: "core.fragments",
+    location: "primary.agentScoped",
+    label: navLabel("nav.fragments", "Fragments"),
+    icon: FlaskConical,
+    route: "core.fragments",
+    order: 12,
   },
 
   {
