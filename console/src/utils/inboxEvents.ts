@@ -4,6 +4,7 @@ export const INBOX_EVENT_QUERY_LIMIT = 200;
 
 export const PUSH_MESSAGE_SOURCES = [
   "cron",
+  "routine",
   "heartbeat",
   "memory",
   "skill_autoupdate",

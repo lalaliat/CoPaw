@@ -33,7 +33,7 @@ class CronContextHook(LifecycleHook):
 
     async def run(self, ctx: HookContext) -> HookResult:
         source = getattr(ctx.request, "session_source", None)
-        if source == "cron":
+        if source in {"cron", "routine"}:
             ctx.extras[IS_CRON_KEY] = True
         return HookResult()
 

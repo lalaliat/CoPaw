@@ -21,6 +21,7 @@ class SessionSource(str, Enum):
 
     chat = "chat"
     cron = "cron"
+    routine = "routine"
 
 
 class ChatSpec(BaseModel):

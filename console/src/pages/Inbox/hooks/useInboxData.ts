@@ -81,6 +81,8 @@ const mapEventToPushMessage = (
       ? "memory"
       : event.source_type === "cron"
       ? "wechat"
+      : event.source_type === "routine"
+      ? "routine"
       : event.source_type === "skill_autoupdate"
       ? "skill"
       : "email",
@@ -91,6 +93,8 @@ const mapEventToPushMessage = (
       ? "Memory"
       : event.source_type === "cron"
       ? "Cron"
+      : event.source_type === "routine"
+      ? "Routine"
       : event.source_type === "skill_autoupdate"
       ? "Auto Sync"
       : "System",

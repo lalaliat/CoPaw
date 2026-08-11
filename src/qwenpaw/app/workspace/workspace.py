@@ -31,6 +31,8 @@ from ..task_tracker import TaskTracker
 from ..chats.session import SafeJSONSession
 from ..crons.manager import CronManager
 from ..crons.repo.json_repo import JsonJobRepository
+from ..routines.manager import RoutineManager
+from ..routines.repo import RoutineRepository
 from ...config.config import load_agent_config
 
 logger = logging.getLogger(__name__)
@@ -119,6 +121,11 @@ class Workspace:
     def cron_manager(self):
         """Get cron manager instance from ServiceManager."""
         return self._service_manager.services.get("cron_manager")
+
+    @property
+    def routine_manager(self):
+        """Get Routine manager instance from ServiceManager."""
+        return self._service_manager.services.get("routine_manager")
 
     # Non-service state
     @property
@@ -457,6 +464,31 @@ class Workspace:
                 start_method="start",
                 stop_method="stop",
                 priority=40,
+                concurrent_init=False,
+            ),
+        )
+
+        sm.register(
+            ServiceDescriptor(
+                name="routine_manager",
+                service_class=RoutineManager,
+                init_args=lambda ws: {
+                    "repo": RoutineRepository(
+                        str(ws.workspace_dir / "routines.json"),
+                    ),
+                    "workspace": ws,
+                    "channel_manager": ws._service_manager.services.get(
+                        "channel_manager",
+                    ),
+                    "timezone_name": normalize_tz(
+                        load_config().user_timezone or "UTC",
+                    )
+                    or "UTC",
+                    "agent_id": ws.agent_id,
+                },
+                start_method="start",
+                stop_method="stop",
+                priority=41,
                 concurrent_init=False,
             ),
         )

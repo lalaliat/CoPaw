@@ -74,6 +74,10 @@ _PUBLIC_PREFIXES: tuple[str, ...] = (
     "/api/frontend_plugin/",
 )
 
+_ROUTINE_FIRE_PATH = re.compile(
+    r"^/api/(?:agents/[^/]+/)?routines/[^/]+/fire$",
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers (reuse SECRET_DIR patterns from envs/store.py)
@@ -721,8 +725,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return True
 
         path = request.url.path
+        # Routine fire endpoints authenticate with a per-Routine bearer token
+        # inside the route instead of the Console login token.
+        is_routine_fire = (
+            request.method == "POST"
+            and _ROUTINE_FIRE_PATH.fullmatch(path) is not None
+        )
         if (
             request.method == "OPTIONS"
+            or is_routine_fire
             or path in _PUBLIC_PATHS
             or any(path.startswith(p) for p in _PUBLIC_PREFIXES)
             or not path.startswith("/api/")

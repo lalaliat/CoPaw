@@ -40,6 +40,10 @@ class CronExecutor:
         target_user_id = job.dispatch.target.user_id
         target_session_id = job.dispatch.target.session_id
         target_channel = job.dispatch.channel
+        execution_source = str(job.meta.get("execution_source") or "cron")
+        session_namespace = str(
+            job.meta.get("session_namespace") or execution_source,
+        )
         dispatch_meta: Dict[str, Any] = dict(job.dispatch.meta or {})
         if job.task_type == "agent":
             # Agent cron replies still print to the console channel, but
@@ -103,8 +107,11 @@ class CronExecutor:
         request_context = (
             dict(raw_context) if isinstance(raw_context, dict) else {}
         )
-        request_context["source"] = "cron"
-        request_context["cron_job_id"] = job.id or ""
+        request_context["source"] = execution_source
+        if execution_source == "routine":
+            request_context["routine_id"] = job.id or ""
+        else:
+            request_context["cron_job_id"] = job.id or ""
         request_context["approval_level"] = (
             ToolExecutionLevel.AUTO.value
             if job.runtime.tool_safety
@@ -120,11 +127,11 @@ class CronExecutor:
             # Use job.id (not run_id) so all runs of this job accumulate in the
             # same dedicated session, giving users a complete history.
             req["session_id"] = (
-                f"{target_session_id}:cron:{job.id}"
+                f"{target_session_id}:{session_namespace}:{job.id}"
                 if target_session_id
-                else f"cron:{job.id}"
+                else f"{session_namespace}:{job.id}"
             )
-            req["session_source"] = "cron"
+            req["session_source"] = execution_source
 
         # Register a ChatSpec so the session appears in the frontend list.
         chat_manager = getattr(self._workspace, "chat_manager", None)
@@ -136,7 +143,7 @@ class CronExecutor:
                     user_id=req.get("user_id", "cron"),
                     channel=target_channel,
                     name=job.name or f"Cron: {job.id}",
-                    source="cron",
+                    source=execution_source,
                 )
             except Exception:
                 logger.debug(
@@ -154,7 +161,7 @@ class CronExecutor:
         )
         baseline_count = len(baseline_messages)
 
-        run_id = str(uuid.uuid4())
+        run_id = str(job.meta.get("trace_run_id") or uuid.uuid4())
         await create_trace(
             run_id,
             meta={
@@ -165,6 +172,7 @@ class CronExecutor:
                 "target_user_id": target_user_id,
                 "target_session_id": target_session_id,
                 "silent": job.dispatch.silent,
+                "source": execution_source,
             },
         )
 

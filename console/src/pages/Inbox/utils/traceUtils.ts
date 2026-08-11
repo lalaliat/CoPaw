@@ -202,8 +202,8 @@ export const formatToolBlockContent = (text: string): string => {
 export const normalizeDetailTaskName = (title: string): string => {
   if (!title) return "-";
   return title
-    .replace(/^(cron result|heartbeat result)\s*[:：]\s*/i, "")
-    .replace(/^(定时任务结果|心跳结果)\s*[:：]\s*/i, "")
+    .replace(/^(cron result|heartbeat result|routine result)\s*[:：]\s*/i, "")
+    .replace(/^(定时任务结果|心跳结果|routine 结果)\s*[:：]\s*/i, "")
     .trim();
 };
 
@@ -220,6 +220,9 @@ export const getDetailModalTitle = (
   }
   if (sourceType === "heartbeat") {
     return t("inbox.detailHeartbeatTitle");
+  }
+  if (sourceType === "routine") {
+    return `Routine：${normalizeDetailTaskName(messageItem.title)}`;
   }
   return messageItem.title || t("inbox.messageDetailTitle");
 };

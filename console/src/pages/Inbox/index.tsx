@@ -157,7 +157,10 @@ export default function InboxPage() {
       .sort((a, b) => a.localeCompare(b))
       .map((type) => ({
         value: type,
-        label: t(SOURCE_TYPE_LABEL_KEYS[type] || type),
+        label:
+          type === "routine"
+            ? "Routine"
+            : t(SOURCE_TYPE_LABEL_KEYS[type] || type),
       }));
   }, [pushMessages, t]);
   const approvalCount = pendingApprovals.length;

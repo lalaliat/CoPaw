@@ -9,6 +9,7 @@ import {
   Select,
   Table,
 } from "@agentscope-ai/design";
+import { Tabs } from "antd";
 import {
   CalendarOutlined,
   LeftOutlined,
@@ -36,6 +37,7 @@ import {
 import { parseCron, serializeCron } from "./components/parseCron";
 import { PageHeader } from "@/components/PageHeader";
 import styles from "./index.module.less";
+import RoutinesPage from "./Routines";
 
 type CronJob = CronJobSpecOutput;
 type OneTimeCronJob = CronJob & {
@@ -59,7 +61,7 @@ type OneTimeJobEvent = {
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-function CronJobsPage() {
+function LegacyCronJobsPage() {
   const { t } = useTranslation();
   const {
     jobs,
@@ -960,6 +962,32 @@ function CronJobsPage() {
           )}
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function CronJobsPage() {
+  const [activeTab, setActiveTab] = useState("cron");
+
+  return (
+    <div className={styles.cronJobsPage}>
+      <Tabs
+        className={styles.taskTabs}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: "cron",
+            label: "定时任务",
+            children: activeTab === "cron" ? <LegacyCronJobsPage /> : null,
+          },
+          {
+            key: "routine",
+            label: "Routine",
+            children: activeTab === "routine" ? <RoutinesPage /> : null,
+          },
+        ]}
+      />
     </div>
   );
 }

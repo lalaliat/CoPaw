@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Trash2,
   Brain,
+  Bot,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { PushMessage } from "../types";
@@ -28,6 +29,7 @@ const CHANNEL_ICONS = {
   telegram: Send,
   discord: MessageSquare,
   email: Mail,
+  routine: Bot,
   memory: Brain,
   heartbeat: MessageCircle,
   skill: RefreshCw,
@@ -39,15 +41,16 @@ const CHANNEL_COLORS = {
   telegram: "#0088CC",
   discord: "#5865F2",
   email: "#EA4335",
+  routine: "#7C3AED",
   memory: "#7C3AED",
   heartbeat: "#5865F2",
   skill: "#1677ff",
 };
 
-const normalizeCronTaskName = (title: string): string =>
+const normalizeAutomatedTaskName = (title: string): string =>
   title
-    .replace(/^(cron result|heartbeat result)\s*[:：]\s*/i, "")
-    .replace(/^(定时任务结果|心跳结果)\s*[:：]\s*/i, "")
+    .replace(/^(cron result|heartbeat result|routine result)\s*[:：]\s*/i, "")
+    .replace(/^(定时任务结果|心跳结果|routine 结果)\s*[:：]\s*/i, "")
     .trim();
 
 export function PushMessageCard(props: PushMessageCardProps) {
@@ -57,9 +60,14 @@ export function PushMessageCard(props: PushMessageCardProps) {
   const channelColor = CHANNEL_COLORS[message.channelType];
   const sourceType = (message.metadata?.sourceType || "").toLowerCase();
   const isCronMessage = sourceType === "cron";
-  const displayTitle = isCronMessage
-    ? t("inbox.pushCronHeader", { name: normalizeCronTaskName(message.title) })
-    : message.title;
+  const displayTitle =
+    sourceType === "routine"
+      ? `Routine：${normalizeAutomatedTaskName(message.title)}`
+      : isCronMessage
+      ? t("inbox.pushCronHeader", {
+          name: normalizeAutomatedTaskName(message.title),
+        })
+      : message.title;
 
   return (
     <Card

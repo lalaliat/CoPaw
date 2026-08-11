@@ -78,6 +78,7 @@ def create_agent_scoped_router() -> APIRouter:
     from .mcp_oauth import router as mcp_oauth_router
     from .workspace import router as workspace_router
     from ..crons.api import router as cron_router
+    from ..routines.api import router as routine_router
     from ..chats.api import router as chats_router
     from .console import router as console_router
     from .plugins import router as plugins_router
@@ -98,6 +99,7 @@ def create_agent_scoped_router() -> APIRouter:
     router.include_router(chats_router)
     router.include_router(config_router)
     router.include_router(cron_router)
+    router.include_router(routine_router)
     router.include_router(mcp_oauth_router)
     router.include_router(mcp_router)
     router.include_router(skills_router)

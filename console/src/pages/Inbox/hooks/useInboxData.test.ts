@@ -110,10 +110,11 @@ describe("useInboxData", () => {
     expect(result.current.summary.pushMessages.unread).toBe(1);
   });
 
-  it("filters out events whose source_type is not cron or heartbeat", async () => {
+  it("keeps Routine events and filters unsupported sources", async () => {
     const events = [
       makeEvent({ id: "keep-cron", source_type: "cron" }),
       makeEvent({ id: "keep-heartbeat", source_type: "heartbeat" }),
+      makeEvent({ id: "keep-routine", source_type: "routine" }),
       makeEvent({ id: "drop-manual", source_type: "manual" }),
       makeEvent({ id: "drop-approval", source_type: "approval" }),
     ];
@@ -121,10 +122,10 @@ describe("useInboxData", () => {
 
     const { result } = renderHook(() => useInboxData());
 
-    await waitFor(() => expect(result.current.pushMessages).toHaveLength(2));
+    await waitFor(() => expect(result.current.pushMessages).toHaveLength(3));
     const ids = result.current.pushMessages.map((m) => m.id);
-    expect(ids).toEqual(["keep-cron", "keep-heartbeat"]);
-    expect(result.current.summary.pushMessages.total).toBe(2);
+    expect(ids).toEqual(["keep-cron", "keep-heartbeat", "keep-routine"]);
+    expect(result.current.summary.pushMessages.total).toBe(3);
   });
 
   it("sorts events by created_at descending", async () => {

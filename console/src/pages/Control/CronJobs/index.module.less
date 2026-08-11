@@ -13,6 +13,77 @@
   }
 }
 
+.taskTabs {
+  :global(.ant-tabs-nav),
+  :global(.qwenpaw-tabs-nav) {
+    width: fit-content;
+    margin: 18px 28px 0 !important;
+    padding: 4px;
+    border: 1px solid rgba(104, 87, 70, 0.1);
+    border-radius: 12px;
+    background: rgba(246, 244, 241, 0.9);
+
+    &::before {
+      display: none;
+    }
+  }
+
+  :global(.ant-tabs-nav-list),
+  :global(.qwenpaw-tabs-nav-list) {
+    gap: 3px;
+  }
+
+  :global(.ant-tabs-tab),
+  :global(.qwenpaw-tabs-tab) {
+    margin: 0 !important;
+    padding: 8px 16px !important;
+    border-radius: 9px;
+    color: rgba(28, 25, 23, 0.56);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: rgba(28, 25, 23, 0.82);
+    }
+  }
+
+  :global(.ant-tabs-tab-active),
+  :global(.qwenpaw-tabs-tab-active) {
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(55, 43, 32, 0.09);
+
+    :global(.ant-tabs-tab-btn) {
+      color: #e96d16 !important;
+      text-shadow: none;
+    }
+
+    :global(.qwenpaw-tabs-tab-btn) {
+      color: #e96d16 !important;
+      text-shadow: none;
+    }
+  }
+
+  :global(.ant-tabs-ink-bar),
+  :global(.qwenpaw-tabs-ink-bar) {
+    display: none;
+  }
+
+  :global(.ant-tabs-content-holder),
+  :global(.qwenpaw-tabs-content-holder) {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .taskTabs {
+    :global(.ant-tabs-nav),
+    :global(.qwenpaw-tabs-nav) {
+      margin: 14px 16px 0 !important;
+    }
+  }
+}
+
 .pageHeader {
   display: flex;
   justify-content: space-between;

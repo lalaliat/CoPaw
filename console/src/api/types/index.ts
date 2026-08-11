@@ -6,6 +6,7 @@ export * from "./channel";
 export * from "./heartbeat";
 export * from "./chat";
 export * from "./cronjob";
+export * from "./routine";
 export * from "./env";
 export * from "./mcp";
 export * from "./provider";

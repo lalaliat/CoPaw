@@ -21,6 +21,7 @@ export interface PushMessage {
     | "telegram"
     | "discord"
     | "email"
+    | "routine"
     | "memory"
     | "heartbeat"
     | "skill";
