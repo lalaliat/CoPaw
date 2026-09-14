@@ -1,0 +1,37 @@
+[
+  {
+    "ref": "v2.0.0",
+    "commit": "d0b9194d7cb90d6ade1d6f99fadf1a0fb7c7670d",
+    "exit_code": 0,
+    "log": "/Users/aoli/projects/QwenPaw_dev/outputs/system-sound/compat-v2.0.0.log",
+    "plugin_version": "0.3.0"
+  },
+  {
+    "ref": "v2.0.1",
+    "commit": "ed5857b546e732174d601b0ea5ca1a081a900b98",
+    "exit_code": 0,
+    "log": "/Users/aoli/projects/QwenPaw_dev/outputs/system-sound/compat-v2.0.1.log",
+    "plugin_version": "0.3.0"
+  },
+  {
+    "ref": "v2.1.0",
+    "commit": "e4995dcf516d27400fbc33891aa3dcbcf79acc7a",
+    "exit_code": 0,
+    "log": "/Users/aoli/projects/QwenPaw_dev/outputs/system-sound/compat-v2.1.0.log",
+    "plugin_version": "0.3.0"
+  },
+  {
+    "ref": "v2.2.0-beta.3",
+    "commit": "b9f35507e1eb06d9ecec22c36173e349852d55cf",
+    "exit_code": 0,
+    "log": "/Users/aoli/projects/QwenPaw_dev/outputs/system-sound/compat-v2.2.0-beta.3.log",
+    "plugin_version": "0.3.0"
+  },
+  {
+    "ref": "HEAD",
+    "commit": "32ff1139bd64e59a5e15b95b736e19f288fdf197",
+    "exit_code": 0,
+    "log": "/Users/aoli/projects/QwenPaw_dev/outputs/system-sound/compat-HEAD.log",
+    "plugin_version": "0.3.0"
+  }
+]
