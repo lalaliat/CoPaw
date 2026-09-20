@@ -16,7 +16,6 @@ from .llamacpp import LlamaCppBackend, LlamaCppServerSetupResult
 from .model_manager import LocalModelInfo as RecommendedLocalModelInfo
 from .model_manager import ModelManager, DownloadSource
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -44,10 +43,9 @@ class LocalModelManager:  # pylint: disable=too-many-public-methods
     _instance: LocalModelManager | None = None
 
     DEFAULT_LLAMA_CPP_BASE_URL = (
-        # Mirror of "https://github.com/ggml-org/llama.cpp/releases/download"
-        "https://download.qwenpaw.agentscope.io/files/models/llama_cpp"
+        "https://github.com/ggml-org/llama.cpp/releases/download"
     )
-    DEFAULT_LLAMA_CPP_RELEASE_TAG = "b8744"
+    DEFAULT_LLAMA_CPP_RELEASE_TAG = "b10853"
     CONFIG_FILE_NAME = "config.json"
 
     def __init__(

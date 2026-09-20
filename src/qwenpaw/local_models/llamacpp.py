@@ -5,6 +5,7 @@ import atexit
 import asyncio
 import logging
 import multiprocessing as mp
+import re
 import shutil
 import socket
 import tempfile
@@ -142,7 +143,8 @@ class LlamaCppBackend:
             )
         except Exception as exc:
             logger.warning(f"Failed to check for llama.cpp updates: {exc}")
-            return True
+            # An unknown version must not trigger replacing an installation.
+            return False
 
     def download(
         self,
@@ -342,16 +344,17 @@ class LlamaCppBackend:
             )
         except CommandExecutionError as exc:
             raise RuntimeError(str(exc)) from exc
-        lines = result.stderr_lines
-        prefix = "version:"
-        for line in lines:
-            if line.startswith(prefix):
-                # Output looks like "version: 8514 (406f4e3f6)"; take the
-                # first whitespace-delimited token instead of a fixed-width
-                # slice, which breaks once the build number is not 4 digits.
-                tokens = line.removeprefix(prefix).split()
-                if tokens:
-                    return tokens[0]
+        for line in result.combined_output.splitlines():
+            line = line.strip()
+            if not line.startswith("version:"):
+                continue
+            # New releases report a semantic version followed by the build
+            # number; compare build numbers with our pinned b<N> release tag.
+            match = re.search(r"\bbuild\s+(\d+)\b", line)
+            if match is None:
+                match = re.match(r"version:\s*(\d+)(?=\s|$)", line)
+            if match is not None:
+                return match.group(1)
         raise RuntimeError(
             "Unexpected version output from llama.cpp server: "
             f"{result.combined_output}",
@@ -910,7 +913,7 @@ class LlamaCppBackend:
         if major == "12":
             return "12.4" if minor >= 4 else None
         if major == "13":
-            return "13.1"
+            return "13.3" if minor >= 3 else "12.4"
         return None
 
     def _build_filename(self, tag: str) -> str:

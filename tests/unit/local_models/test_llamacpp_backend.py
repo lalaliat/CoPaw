@@ -467,7 +467,10 @@ async def test_list_devices_raises_when_not_installed(
         ("12.3", None),
         ("12.4", "12.4"),
         ("12.8", "12.4"),
-        ("13.0", "13.1"),
+        ("13.0", "12.4"),
+        ("13.2", "12.4"),
+        ("13.3", "13.3"),
+        ("13.4", "13.3"),
     ],
 )
 def test_init_maps_supported_windows_cuda_versions(
@@ -1349,3 +1352,94 @@ def test_force_shutdown_server_uses_shared_shutdown_helper(
     downloader.shutdown_server_sync()
 
     assert calls == [(process, 5.0, 1.0)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+@pytest.mark.parametrize(
+    ("version", "expected", "has_update"),
+    [
+        ("version: 8514 (abc)", "8514", True),
+        ("version: 8744 (abc)", "8744", False),
+        ("version: 10853 (abc)", "10853", False),
+        (
+            "version: 0.4.0-dev (build 10853, commit 9dcf84e5a)",
+            "10853",
+            False,
+        ),
+    ],
+)
+async def test_version_update_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+    stream: str,
+    version: str,
+    expected: str,
+    has_update: bool,
+) -> None:
+    downloader = _build_downloader(monkeypatch)
+    monkeypatch.setattr(
+        downloader,
+        "check_llamacpp_installation",
+        lambda: (True, ""),
+    )
+
+    async def fake_run(command: list[str], **_kwargs: Any) -> CommandResult:
+        output = f"backend initialization\n  {version}\nbuilt with compiler"
+        return CommandResult(
+            command=command,
+            returncode=0,
+            stdout=output if stream == "stdout" else "",
+            stderr=output if stream == "stderr" else "",
+        )
+
+    monkeypatch.setattr(downloader_module, "run_command_async", fake_run)
+    assert await downloader.get_version() == expected
+    assert await downloader.has_update("b8744") is has_update
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "output",
+    ["unrecognized output", "version: 0.4.0-dev (commit abc)"],
+)
+async def test_unknown_version_does_not_offer_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+    output: str,
+) -> None:
+    downloader = _build_downloader(monkeypatch)
+    monkeypatch.setattr(
+        downloader,
+        "check_llamacpp_installation",
+        lambda: (True, ""),
+    )
+
+    async def fake_run(command: list[str], **_kwargs: Any) -> CommandResult:
+        return CommandResult(
+            command=command,
+            returncode=0,
+            stdout="",
+            stderr=output,
+        )
+
+    monkeypatch.setattr(downloader_module, "run_command_async", fake_run)
+    with pytest.raises(RuntimeError, match="Unexpected version output"):
+        await downloader.get_version()
+    assert await downloader.has_update("b8744") is False
+
+
+@pytest.mark.asyncio
+async def test_failed_version_command_does_not_offer_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    downloader = _build_downloader(monkeypatch)
+    monkeypatch.setattr(
+        downloader,
+        "check_llamacpp_installation",
+        lambda: (True, ""),
+    )
+
+    async def fake_run(command: list[str], **_kwargs: Any) -> CommandResult:
+        raise CommandExecutionError(command, "boom", returncode=1)
+
+    monkeypatch.setattr(downloader_module, "run_command_async", fake_run)
+    assert await downloader.has_update("b8744") is False
