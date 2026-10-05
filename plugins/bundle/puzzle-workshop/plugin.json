@@ -1,0 +1,10 @@
+{
+  "id": "puzzle-workshop",
+  "name": "拼图工坊",
+  "version": "0.2.0",
+  "description": "用拼图探索 QwenPaw 架构；已安装插件在保存后真实启停，其余模块仅演示。",
+  "author": "Local demo",
+  "type": "general",
+  "entry": {"backend": "plugin.py", "frontend": "frontend.js"},
+  "qwenpaw_version": {"min": "2.2.2b4"}
+}
