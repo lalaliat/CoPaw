@@ -9,7 +9,6 @@ import functools
 import itertools
 import logging
 import time
-import uuid
 from collections import deque
 from collections.abc import Mapping
 from contextvars import ContextVar
@@ -25,6 +24,7 @@ from .events import (
     StreamContent,
     StreamMessage,
     SubscriptionGap,
+    JSONValue,
 )
 
 _log = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def observing():
     return _observing.get()
 
 
-def freeze(value):
+def freeze(value: object) -> JSONValue:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     if isinstance(value, Mapping):
@@ -140,6 +140,7 @@ def approval_snapshot(pending):
         str(pending.extra.get("source_type", "tool_guard")),
         pending.scope.value if pending.scope else None,
         ApprovalDisplay(**approval_display_fields(pending)),
+        getattr(pending, "_sdk_run_id", None),
     )
 
 
@@ -153,9 +154,12 @@ def emit(event):
 
 
 def approval_changed(pending):
-    if not _listeners:
-        return
     try:
+        from ._runs import bind_approval
+
+        bind_approval(pending)
+        if not _listeners:
+            return
         emit(
             ApprovalEvent(
                 f"approval.{pending.status}",
@@ -171,21 +175,26 @@ def approval_changed(pending):
 def observe_stream(function):
     @functools.wraps(function)
     def wrapped(workspace, request):
-        if not _listeners:
-            return function(workspace, request)
-
         async def observed():
-            run_id = str(
-                getattr(request, "request_id", None) or uuid.uuid4().hex,
+            from ._runs import current_run, index
+            from ..schemas import AgentRequest
+
+            normalized = (
+                AgentRequest(**request)
+                if isinstance(request, dict)
+                else request
             )
+            runs = index()
+            record = runs.start(workspace, normalized)
+            run_id = record.run_id
             identity = {
-                "run_id": run_id,
+                # SDK 1.0 observers correlate with the request ID. Preserve
+                # that alias; snapshot.run_id is the new unique run identity.
+                "run_id": runs.aliases[run_id],
                 "workspace_id": workspace.agent_id,
-                "session_id": str(getattr(request, "session_id", "") or ""),
-                "user_id": str(getattr(request, "user_id", "") or ""),
-                "channel": str(
-                    getattr(request, "channel", "console") or "console",
-                ),
+                "session_id": record.session_id,
+                "user_id": record.user_id,
+                "channel": record.channel,
             }
 
             def publish(kind, event=None, reason=""):
@@ -197,6 +206,7 @@ def observe_stream(function):
                         timestamp=time.time(),
                         event=event,
                         reason=reason,
+                        snapshot=runs.snapshots[run_id],
                     ),
                 )
 
@@ -206,11 +216,13 @@ def observe_stream(function):
             try:
                 while True:
                     token = _observing.set(True)
+                    owner = current_run.set(run_id)
                     try:
                         item = await anext(stream)
                     except StopAsyncIteration:
                         break
                     finally:
+                        current_run.reset(owner)
                         _observing.reset(token)
                     try:
                         snapshot = chat_event(item)
@@ -228,10 +240,21 @@ def observe_stream(function):
                 raise
             finally:
                 token = _observing.set(True)
+                owner = current_run.set(run_id)
                 try:
                     await stream.aclose()
+                except BaseException as exc:
+                    outcome = (
+                        "cancelled"
+                        if isinstance(exc, asyncio.CancelledError)
+                        else "failed"
+                    )
+                    reason = str(exc) or "stream cleanup interrupted"
+                    raise
                 finally:
+                    current_run.reset(owner)
                     _observing.reset(token)
+                    runs.finish(run_id, outcome, reason)
                     publish(f"run.{outcome}", reason=reason)
 
         return observed()
@@ -300,9 +323,22 @@ def subscribe(plugin, spec):
                     else:
                         event = self.queue.popleft()
                     try:
+                        from .context import RequestContext
+
+                        owner = (
+                            event.approval
+                            if isinstance(event, ApprovalEvent)
+                            else event
+                        )
                         async with plugin._invocation(
                             workspace_id=getattr(event, "workspace_id", ""),
                             session_id=getattr(event, "session_id", ""),
+                            identity=RequestContext(
+                                getattr(event, "workspace_id", ""),
+                                getattr(event, "session_id", ""),
+                                getattr(owner, "channel", ""),
+                                getattr(owner, "user_id", ""),
+                            ),
                         ) as context:
                             await plugin._call(spec.handler, context, event)
                     except Exception as exc:

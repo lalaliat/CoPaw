@@ -21,12 +21,35 @@ from .apps import (
     SessionSummary,
     WorkspaceSummary,
     StreamingResponse,
+    FileResponse,
     TaskSnapshot,
     WebSocket,
 )
 from .errors import SDKError, SDKAccessError, StaleContextError
 from .storage import PluginStorage, MediaStore
 from ._events import _message, approval_snapshot, chat_event, _observing
+
+
+def chat_model(value):
+    """Validate the HTTP boundary before a streaming response starts."""
+    from fastapi import HTTPException
+    from .models import ModelSelection
+
+    if value is None:
+        return None
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"provider_id", "model_id"}
+        or any(
+            not isinstance(item, str) or not item.strip()
+            for item in value.values()
+        )
+    ):
+        raise HTTPException(
+            422,
+            "model requires nonempty provider_id and model_id",
+        )
+    return ModelSelection(**value)
 
 
 def plain(value):
@@ -45,10 +68,11 @@ def plain(value):
 
 def wire_event(value):
     """Restore the existing frontend wire envelope from finite public DTOs."""
-    from .events import ChatEvent
+    from .events import ChatEvent, StreamContent, StreamMessage
+    from ._event_json import event_dict
 
-    if isinstance(value, ChatEvent) and value.object == "content":
-        return wire_event(value.content[0])
+    if isinstance(value, (ChatEvent, StreamContent, StreamMessage)):
+        return event_dict(value)
     if is_dataclass(value):
         data = {
             field.name: wire_event(getattr(value, field.name))
@@ -76,9 +100,10 @@ class CapabilityContext:  # pylint: disable=protected-access
         session_id=None,
         skill=None,
         request_id=None,
+        model=None,
     ):
         return await self.public.chat(
-            ChatRequest(message, session_id, skill, request_id),
+            ChatRequest(message, session_id, skill, request_id, model),
         )
 
     def chat_stream(
@@ -88,9 +113,10 @@ class CapabilityContext:  # pylint: disable=protected-access
         session_id=None,
         skill=None,
         request_id=None,
+        model=None,
     ):
         return self.public.chat_stream(
-            ChatRequest(message, session_id, skill, request_id),
+            ChatRequest(message, session_id, skill, request_id, model),
         )
 
     async def get_session_history(self, session_id):
@@ -165,8 +191,9 @@ def _summary(value):
 # Keep related adapter declarations and lifecycle ordering together.
 # pylint: disable-next=too-many-public-methods
 class Services:  # pylint: disable=protected-access
-    def __init__(self, plugin, legacy, admitted):
+    def __init__(self, plugin, legacy, admitted, *, selected_chat=""):
         self.plugin, self.legacy, self.admitted = plugin, legacy, admitted
+        self.selected_chat = selected_chat
         self._scope = None
         self._cancelled = lambda: False
 
@@ -231,6 +258,8 @@ class Services:  # pylint: disable=protected-access
             yield services.context(base)
 
     def context(self, base):
+        from .context import RequestContext
+
         self._scope = base.resources
         self._cancelled = lambda: base.cancelled
         key = hashlib.sha256(
@@ -249,7 +278,7 @@ class Services:  # pylint: disable=protected-access
             **{
                 field.name: getattr(base, field.name)
                 for field in fields(base)
-                if field.name not in {"storage", "media"}
+                if field.name not in {"storage", "media", "identity"}
             },
             storage=storage,
             media=MediaStore(
@@ -261,6 +290,12 @@ class Services:  # pylint: disable=protected-access
                 "/api/files/preview/" + str(media_root),
             ),
             app_id=self.legacy.app_id,
+            identity=RequestContext(
+                base.workspace_id,
+                base.session_id,
+                self.legacy.channel,
+                self.legacy.user_id,
+            ),
             user_id=self.legacy.user_id,
             channel=self.legacy.channel,
             _services=self,
@@ -354,6 +389,25 @@ class Services:  # pylint: disable=protected-access
             for item in await self.legacy.get_session_history(sid)
         )
 
+    async def selected_conversation(self):
+        self.guard()
+        if not self.selected_chat:
+            raise SDKAccessError(
+                "No main conversation was selected for this operation",
+            )
+        workspace = await self.workspace()
+        chat = await workspace.chat_manager.get_chat(self.selected_chat)
+        if (
+            chat is None
+            or chat.user_id != self.legacy.user_id
+            or chat.channel != self.legacy.channel
+            or chat.session_id.startswith("pawapp:")
+        ):
+            raise SDKAccessError(
+                "Selected conversation is outside this caller's scope",
+            )
+        return workspace, chat
+
     async def _owned_chat(self, run_id):
         workspace = await self.workspace()
         chat = await workspace.chat_manager.get_chat(run_id)
@@ -365,6 +419,7 @@ class Services:  # pylint: disable=protected-access
 
     async def _produce_chat(self, request):
         from ..schemas import AgentRequest
+        from ._models import selection_override
         from ..config.context import current_workspace_dir, current_session_id
 
         workspace = await self.workspace()
@@ -386,6 +441,7 @@ class Services:  # pylint: disable=protected-access
             agent_id=self.legacy.agent_id,
             request_id=request.request_id,
             request_context={"app_id": self.legacy.app_id},
+            model_slot_override=selection_override(request.model),
         )
         async with self.plugin._invocation(
             workspace_id=self.legacy.agent_id,
@@ -898,7 +954,12 @@ def register(plugin, app):
             workspace_id=legacy.agent_id,
             session_id="",
         ) as base:
-            services = Services(plugin, legacy, lambda: admitted)
+            services = Services(
+                plugin,
+                legacy,
+                lambda: admitted,
+                selected_chat=identity_request.headers.get("X-Chat-Id", ""),
+            )
             public = services.context(base)
             token = current.set(public)
             try:
@@ -915,18 +976,23 @@ def register(plugin, app):
 
     router = APIRouter(route_class=Route)
 
-    def add_route(path, methods, handler):
+    def add_route(path, methods, handler, body_mode="bytes", limit=None):
         async def endpoint(request: Request):
-            public = HttpRequest(
-                request.method,
-                request.url.path,
-                dict(request.path_params),
-                dict(request.query_params),
-                dict(request.headers),
-                await request.body(),
+            from ._http import request_body, file_response, invoke
+
+            public = await request_body(
+                request,
+                body_mode,
+                limit,
+                current.get().resources,
             )
             try:
-                result = await plugin._call(handler, current.get(), public)
+                result = await invoke(
+                    request,
+                    lambda: plugin._call(handler, current.get(), public),
+                )
+                if isinstance(result, FileResponse):
+                    return await file_response(current.get(), result)
             except SDKAccessError as exc:
                 return JSONResponse({"detail": str(exc)}, status_code=403)
             if isinstance(result, StreamingResponse):
@@ -964,8 +1030,8 @@ def register(plugin, app):
         endpoint.__name__ = f"{app.app_id}_{len(router.routes)}"
         router.add_api_route(path, endpoint, methods=list(methods))
 
-    for path, methods, handler in app._routes:
-        add_route(path, methods, handler)
+    for path, methods, handler, body_mode, limit in app._routes:
+        add_route(path, methods, handler, body_mode, limit)
 
     async def capabilities(_context, _request):
         from .sdk_version import SDK_VERSION
@@ -977,7 +1043,14 @@ def register(plugin, app):
                 "http",
                 "websocket",
                 *(
-                    ["chat", "sessions", "storage", "tasks", "approvals"]
+                    [
+                        "chat",
+                        "sessions",
+                        "storage",
+                        "tasks",
+                        "approvals",
+                        "checkpoints",
+                    ]
                     if app._standard
                     else []
                 ),
@@ -1023,6 +1096,20 @@ def register(plugin, app):
 
     if app._standard:
         from ..pawapp.app import _build_capability_router
+        from ._checkpoints import http_handler
+
+        for action, path in (
+            ("timeline", "/checkpoints/timeline"),
+            ("snapshot", "/checkpoints/snapshot"),
+            ("preview", "/checkpoints/restore/preview"),
+            ("restore", "/checkpoints/restore"),
+        ):
+            add_route(
+                path,
+                ("GET",) if action == "timeline" else ("POST",),
+                http_handler(action),
+                limit=64 * 1024,
+            )
 
         async def capability_context():
             return CapabilityContext(current.get())
@@ -1044,6 +1131,7 @@ def register(plugin, app):
                     payload.get("session_id"),
                     payload.get("skill"),
                     payload.get("request_id"),
+                    chat_model(payload.get("model")),
                 ),
             )
 

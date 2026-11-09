@@ -780,6 +780,30 @@ class CronManager(ManagerBase):
             )
         return f"{SERVICE_JOB_ID_PREFIX}{source}:{key}"
 
+    def register_service_job(self, source: str, declaration: ServiceCronJob):
+        """Strict, reversible service registration for lifecycle-owned jobs."""
+        job_id = self._service_job_id(source, declaration.key)
+        if self._scheduler.get_job(job_id) is not None:
+            raise ValueError(f"Service job already registered: {job_id}")
+        trigger = CronTrigger.from_crontab(
+            declaration.cron,
+            timezone=declaration.timezone or self._scheduler.timezone,
+        )
+        return self._scheduler.add_job(
+            self._run_service_job,
+            trigger=trigger,
+            id=job_id,
+            args=[source, declaration],
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=declaration.misfire_grace_seconds,
+        )
+
+    def unregister_service_job(self, job) -> None:
+        """Do not revoke a replacement owned by another generation."""
+        if self._scheduler.get_job(job.id) is job:
+            self._scheduler.remove_job(job.id)
+
     async def run_job(self, job_id: str) -> None:
         """Trigger a job to run in the background (fire-and-forget).
 

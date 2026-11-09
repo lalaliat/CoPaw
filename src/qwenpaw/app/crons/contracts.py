@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Backend-neutral declarations for service-contributed cron jobs."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -19,3 +20,4 @@ class ServiceCronJob:
     callback: Callable[[], Awaitable[None]]
     misfire_grace_seconds: int = 600
     jitter_seconds: int = 0
+    timezone: str | None = None

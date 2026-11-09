@@ -26,7 +26,65 @@ PUBLIC_API = MappingProxyType(
             "PluginBusyError",
         ),
         "qwenpaw.plugins.logging": ("PluginLogger",),
-        "qwenpaw.plugins.models": ("ModelService",),
+        "qwenpaw.plugins.context": ("RequestContext",),
+        "qwenpaw.plugins.channel_workers": (
+            "ChannelDefinition",
+            "ChannelExclusiveResource",
+            "ChannelDriver",
+            "ChannelWorkerContext",
+            "ChannelReceiveResult",
+            "ChannelResponse",
+            "ChannelContent",
+            "ReplyTarget",
+            "ChannelSendResult",
+            "ChannelDeliveryError",
+            "ResponsePolicy",
+            "ChannelDelivery",
+            "ChannelDeliveryStep",
+            "ChannelAuth",
+            "ChannelApproval",
+            "ChannelApprovalAction",
+            "ChannelApprovalResolution",
+            "ChannelApprovals",
+        ),
+        "qwenpaw.plugins.channel_management": (
+            "ChannelManagementRequest",
+            "ChannelManagementResult",
+            "ChannelQRCode",
+            "ChannelAuthorization",
+            "ChannelVerification",
+            "ChannelManagementFailure",
+        ),
+        "qwenpaw.plugins.channel_ingress": (
+            "ChannelIngressRoute",
+            "ChannelIngressSpec",
+            "ChannelIngressBinding",
+            "ChannelIngress",
+        ),
+        "qwenpaw.plugins.runs": ("RunService", "RunSnapshot"),
+        "qwenpaw.plugins.workspace": ("WorkspaceService",),
+        "qwenpaw.plugins.conversations": (
+            "ConversationService",
+            "ConversationMessage",
+        ),
+        "qwenpaw.plugins.stops": ("StopContext", "StopSpec", "StopResult"),
+        "qwenpaw.plugins.shell": (
+            "ShellBackendSpec",
+            "ShellRequest",
+            "ShellResult",
+        ),
+        "qwenpaw.plugins.workflows": (
+            "WorkflowSpec",
+            "WorkflowSchedule",
+            "WorkflowContext",
+            "WorkflowResult",
+            "WorkflowNotification",
+        ),
+        "qwenpaw.plugins.models": (
+            "ModelService",
+            "ModelSelection",
+            "ModelDescription",
+        ),
         "qwenpaw.plugins.messages": ("Message", "ContentBlock", "Attachment"),
         "qwenpaw.plugins.tools": (
             "ToolSpec",
@@ -86,6 +144,7 @@ PUBLIC_API = MappingProxyType(
         ),
         "qwenpaw.plugins.events": (
             "JSONValue",
+            "JSONData",
             "StreamContent",
             "StreamMessage",
             "ChatEvent",
@@ -109,11 +168,20 @@ PUBLIC_API = MappingProxyType(
             "TaskSnapshot",
             "CancelResult",
             "HttpRequest",
+            "UploadedFile",
+            "FileResponse",
             "HttpResponse",
             "StreamingResponse",
             "AppContext",
             "PawApp",
             "WebSocket",
+        ),
+        "qwenpaw.plugins.checkpoints": (
+            "CheckpointService",
+            "CheckpointEntry",
+            "SnapshotResult",
+            "RestoreResult",
+            "CheckpointError",
         ),
         "qwenpaw.plugins.channels": (
             "ChannelMessage",
@@ -161,13 +229,150 @@ class APIExport:
     symbol: str
     since: str = "1.0.0"
     stability: str = "stable"
+    # Relative member names, optionally followed by a parameter name.
+    # Example: ("process.tree", "1.1.0") extends a 1.0.0 method.
+    # A "parameter.default" entry versions a newly optional parameter.
+    members: tuple[tuple[str, str], ...] = ()
+
+
+_MEMBER_VERSIONS = {
+    "qwenpaw.plugins.channels.ChannelMessage": (
+        ("sender_name", "1.1.0"),
+        ("thread_id", "1.1.0"),
+        ("actor_unknown", "1.1.0"),
+    ),
+    "qwenpaw.plugins.commands.CommandSpec": (("control", "1.1.0"),),
+    "qwenpaw.plugins.apps.HttpRequest": (("form", "1.1.0"),),
+    "qwenpaw.plugins.apps.PawApp": (
+        ("route.body", "1.1.0"),
+        ("route.max_body_bytes", "1.1.0"),
+    ),
+    "qwenpaw.plugins.apps.AppContext": (("conversations", "1.1.0"),),
+    "qwenpaw.plugins.apps.ChatRequest": (("model", "1.1.0"),),
+    "qwenpaw.plugins.events.ChatEvent": (("to_dict", "1.1.0"),),
+    "qwenpaw.plugins.events.RunEvent": (("snapshot", "1.1.0"),),
+    "qwenpaw.plugins.events.ApprovalSnapshot": (("run_id", "1.1.0"),),
+    "qwenpaw.plugins.storage.PluginStorage": (
+        ("path", "1.1.0"),
+        ("import_legacy", "1.1.0"),
+        ("import_legacy_tree", "1.1.0"),
+    ),
+    "qwenpaw.plugins.modes.ModeContext": (("identity", "1.1.0"),),
+    "qwenpaw.plugins.PluginContext": (
+        ("register_stop", "1.1.0"),
+        ("register_shell_backend", "1.1.0"),
+        ("register_workflow", "1.1.0"),
+    ),
+    "qwenpaw.plugins.tools.ToolContext": (
+        ("identity", "1.1.0"),
+        ("runs", "1.1.0"),
+        ("workspace_ops", "1.1.0"),
+        ("checkpoints", "1.1.0"),
+    ),
+    "qwenpaw.plugins.prompts.PromptSpec": (
+        ("render", "1.1.0"),
+        ("text.default", "1.1.0"),
+    ),
+    "qwenpaw.plugins.hooks.HookContext": (("session_saved", "1.1.0"),),
+    "qwenpaw.plugins.models.ModelService": (
+        ("configured", "1.1.0"),
+        ("catalog", "1.1.0"),
+    ),
+    "qwenpaw.plugins.resources.ResourceScope": (
+        ("run_sync", "1.1.0"),
+        ("async_process", "1.1.0"),
+        ("process.tree", "1.1.0"),
+        ("__aenter__", "1.1.0"),
+        ("__aexit__", "1.1.0"),
+    ),
+    "qwenpaw.plugins.markets.MarketContext": (
+        ("lang", "1.1.0"),
+        ("category", "1.1.0"),
+    ),
+    "qwenpaw.plugins.testing.PluginTestHost": (
+        ("process_channels", "1.1.0"),
+        # Existing 1.0 keyword forwarding is now explicit in the signature.
+        ("call_tool.workspace_id", "1.0.0"),
+        ("call_tool.session_id", "1.0.0"),
+        ("run_workflow", "1.1.0"),
+        ("call_control_command", "1.1.0"),
+        ("evaluate_stop", "1.1.0"),
+        ("search_market.lang", "1.1.0"),
+        ("search_market.category", "1.1.0"),
+        *(
+            (f"{method}.{parameter}", "1.1.0")
+            for method in (
+                "call_tool",
+                "stream_tool",
+                "call_command",
+                "run_hooks",
+                "build_prompt",
+                "active_modes",
+                "run_mode",
+            )
+            for parameter in ("user_id", "channel")
+        ),
+        ("run_hooks.session_saved", "1.1.0"),
+    ),
+    "qwenpaw.plugins.compliance.APIExport": (("members", "1.1.0"),),
+}
+
+_EXPORT_VERSIONS = {
+    **{
+        f"qwenpaw.plugins.channel_ingress.{name}": "1.1.0"
+        for name in PUBLIC_API["qwenpaw.plugins.channel_ingress"]
+    },
+    **{
+        f"qwenpaw.plugins.channel_management.{name}": "1.1.0"
+        for name in PUBLIC_API["qwenpaw.plugins.channel_management"]
+    },
+    **{
+        f"qwenpaw.plugins.channel_workers.{name}": "1.1.0"
+        for name in PUBLIC_API["qwenpaw.plugins.channel_workers"]
+    },
+    **{
+        f"qwenpaw.plugins.workflows.{name}": "1.1.0"
+        for name in PUBLIC_API["qwenpaw.plugins.workflows"]
+    },
+    **{
+        f"qwenpaw.plugins.checkpoints.{name}": "1.1.0"
+        for name in (
+            "CheckpointService",
+            "CheckpointEntry",
+            "SnapshotResult",
+            "RestoreResult",
+            "CheckpointError",
+        )
+    },
+    "qwenpaw.plugins.apps.UploadedFile": "1.1.0",
+    "qwenpaw.plugins.apps.FileResponse": "1.1.0",
+    "qwenpaw.plugins.conversations.ConversationService": "1.1.0",
+    "qwenpaw.plugins.conversations.ConversationMessage": "1.1.0",
+    "qwenpaw.plugins.workspace.WorkspaceService": "1.1.0",
+    "qwenpaw.plugins.events.JSONData": "1.1.0",
+    "qwenpaw.plugins.runs.RunService": "1.1.0",
+    "qwenpaw.plugins.runs.RunSnapshot": "1.1.0",
+    **{
+        f"qwenpaw.plugins.stops.{name}": "1.1.0"
+        for name in ("StopContext", "StopSpec", "StopResult")
+    },
+    "qwenpaw.plugins.context.RequestContext": "1.1.0",
+    **{
+        f"qwenpaw.plugins.shell.{name}": "1.1.0"
+        for name in ("ShellBackendSpec", "ShellRequest", "ShellResult")
+    },
+    "qwenpaw.plugins.models.ModelSelection": "1.1.0",
+    "qwenpaw.plugins.models.ModelDescription": "1.1.0",
+}
 
 
 API_EXPORTS = tuple(
     APIExport(
         module,
         symbol,
+        since=_EXPORT_VERSIONS.get(f"{module}.{symbol}", "1.0.0"),
         stability="compatibility" if module == "qwenpaw.pawapp" else "stable",
+        members=_MEMBER_VERSIONS.get(f"{module}.{symbol}", ()),
     )
     for module, symbols in PUBLIC_API.items()
     for symbol in symbols
@@ -191,7 +396,7 @@ class CheckReport:
     runtime_checked: bool = False
     package_hash: str = ""
     sdk_version: str = "1.0.0"
-    rules_version: str = "1.0.0"
+    rules_version: str = "1.1.0"
     checked_at: str = ""
     plugin_id: str = ""
     declared_sdk_version: str = ""
@@ -244,6 +449,18 @@ def check_plugin(directory: str | Path) -> CheckReport:
             continue
         if file.suffix == ".py":
             sources.append(file)
+        elif file.suffix in {
+            ".js",
+            ".mjs",
+            ".jsx",
+            ".ts",
+            ".tsx",
+        } and not file.name.endswith(".d.ts"):
+            uncovered.add(
+                "Frontend types and minimum SDK version are not checked by "
+                "this Python checker; run qwenpaw-sdk-check with the plugin "
+                "manifest and author tsconfig.json",
+            )
         digest.update(str(file.relative_to(directory)).encode() + b"\0")
         with file.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -279,6 +496,25 @@ def check_plugin(directory: str | Path) -> CheckReport:
         )
         if entry and not (directory / entry).is_file():
             raise ValueError("Declared backend entry does not exist")
+        if manifest.get("type") == "channel":
+            from .channel_workers import ChannelDefinition
+            from .channel_adapter import _contained_file
+            from ._channel_check import check_channel_package
+
+            descriptor_entry = (manifest.get("entry") or {}).get("descriptor")
+            if not isinstance(descriptor_entry, str):
+                raise ValueError("Static channel entry requires a descriptor")
+            definition = ChannelDefinition.load(
+                _contained_file(directory, descriptor_entry),
+            )
+            findings.extend(
+                check_channel_package(
+                    directory,
+                    definition,
+                    descriptor_entry=descriptor_entry,
+                    declaration=manifest.get("sdk") or {},
+                ),
+            )
     except (
         OSError,
         ValueError,
@@ -357,6 +593,20 @@ def check_plugin(directory: str | Path) -> CheckReport:
                         item.name,
                     )
 
+        from ._api_check import check_member_versions
+
+        public_protocols = check_member_versions(
+            tree,
+            aliases,
+            declaration.get("version", ""),
+            _MEMBER_VERSIONS,
+            {
+                f"{entry.module}.{entry.symbol}": entry.since
+                for entry in API_EXPORTS
+            },
+            reject,
+        )
+
         def qualified(node):
             if isinstance(node, ast.Name):
                 return aliases.get(node.id, node.id)
@@ -423,6 +673,7 @@ def check_plugin(directory: str | Path) -> CheckReport:
                     )
                 if (
                     node.attr.startswith("_")
+                    and id(node) not in public_protocols
                     and isinstance(node.value, ast.Name)
                     and node.value.id in contexts
                 ):
@@ -431,8 +682,10 @@ def check_plugin(directory: str | Path) -> CheckReport:
                         "private-context",
                         f"Private context member: {node.attr}",
                     )
-                if name.startswith("qwenpaw.") and any(
-                    part.startswith("_") for part in name.split(".")
+                if (
+                    id(node) not in public_protocols
+                    and name.startswith("qwenpaw.")
+                    and any(part.startswith("_") for part in name.split("."))
                 ):
                     reject(
                         node,
@@ -453,6 +706,7 @@ def check_plugin(directory: str | Path) -> CheckReport:
                     )
                 elif (
                     node.attr.startswith("_")
+                    and id(node) not in public_protocols
                     and isinstance(node.value, ast.Name)
                     and node.value.id not in contexts | {"self", "cls"}
                 ):

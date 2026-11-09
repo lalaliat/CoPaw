@@ -64,7 +64,7 @@ subprocess.run(
     check=True,
     env=environment,
 )
-for name in ("@types/react", "@types/prop-types", "csstype"):
+for name in ("@types/react", "@types/prop-types", "csstype", "typescript"):
     shutil.copytree(args.dependencies / name, root / "node_modules" / name)
 (root / "author.ts").write_text(
     """
@@ -132,6 +132,54 @@ for mode, resolution in (("NodeNext", "NodeNext"), ("ESNext", "bundler")):
     results[resolution] = {
         "returncode": result.returncode,
         "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+(root / "author.ts").write_text(
+    """
+import {getHost, forApp, tasks, checkpoints} from "@qwenpaw/plugin-sdk";
+const host = getHost();
+const draft = host.chat.composer.read();
+if (draft) host.chat.composer.replace(draft, "Improved");
+void host.host.selectAgent("default");
+const options = {model: {provider_id: "provider", model_id: "model"}};
+void forApp("author-app").chat("Hello", options);
+void tasks("author-app").start({message: "Hello", ...options});
+void checkpoints("author-app").timeline({chatId: "selected"});
+""",
+)
+for minimum, expected in (("1.0.0", 1), ("1.1.0", 0)):
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {"id": "author", "version": "0.1.0", "sdk": {"version": minimum}},
+        ),
+    )
+    result = subprocess.run(
+        [
+            str(root / "node_modules/.bin/qwenpaw-sdk-check"),
+            "plugin.json",
+            "tsconfig.json",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.strip(), (
+        result.returncode,
+        result.stdout,
+        result.stderr,
+    )
+    report = json.loads(result.stdout)
+    matched = result.returncode == expected and (
+        report["ok"]
+        if expected == 0
+        else len([f for f in report["findings"] if f["rule"] == "sdk-version"])
+        >= 6
+    )
+    results[f"minimum-{minimum}"] = {
+        "returncode": 0 if matched else 1,
+        "checker_exit_code": result.returncode,
+        "report": report,
         "stderr": result.stderr,
     }
 (root / "results.json").write_text(json.dumps(results, indent=2))

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Mapping, Sequence
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 from .events import JSONValue
@@ -36,6 +37,22 @@ _OPTIONS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class ModelSelection:
+    """A provider/model identity, without credentials or mutable config."""
+
+    provider_id: str
+    model_id: str
+
+
+@dataclass(frozen=True)
+class ModelDescription:
+    provider_id: str
+    provider_name: str
+    model_id: str
+    model_name: str
+
+
 class ModelService:
     """
     Use context.models; each request remains owned by that callback scope.
@@ -57,6 +74,65 @@ class ModelService:
             raise StaleContextError("The model caller's scope has ended")
         if not context.workspace_id:
             raise SDKError("Model requests require a workspace-bound context")
+
+    def _check_workspace(self) -> None:
+        from ..config.utils import load_config
+
+        reference = load_config().agents.profiles.get(
+            self._context.workspace_id,
+        )
+        if reference is None or not reference.enabled:
+            raise SDKError(
+                "The calling workspace is not configured and enabled",
+            )
+
+    async def configured(self) -> ModelSelection | None:
+        """Read this workspace's choice, falling back to the host default."""
+        from ..agents.model_factory import _load_agent_model_settings
+        from ..providers.provider_manager import ProviderManager
+
+        self._guard()
+
+        def read() -> ModelSelection | None:
+            self._check_workspace()
+            manager = ProviderManager.get_instance()
+            slot = _load_agent_model_settings(
+                self._context.workspace_id,
+            ).model_slot
+            slot = slot or manager.get_active_model()
+            if slot is None or not slot.provider_id or not slot.model:
+                return None
+            return ModelSelection(slot.provider_id, slot.model)
+
+        result = await self._context.resources.run_sync(read)
+        self._guard()
+        return result
+
+    async def catalog(self) -> tuple[ModelDescription, ...]:
+        """List enabled chat-model choices, never provider secrets/endpoints."""
+        from ..providers.provider_manager import ProviderManager
+
+        self._guard()
+        await self._context.resources.run_sync(self._check_workspace)
+        providers = await ProviderManager.get_instance().list_provider_info()
+        self._guard()
+        result = {}
+        for provider in providers:
+            if not provider.enabled:
+                continue
+            hidden = set(provider.hidden_model_ids) | set(
+                provider.removed_model_ids,
+            )
+            for model in (*provider.models, *provider.extra_models):
+                if model.model_type != "chat" or model.id in hidden:
+                    continue
+                result[(provider.id, model.id)] = ModelDescription(
+                    provider.id,
+                    provider.name,
+                    model.id,
+                    model.name,
+                )
+        return tuple(result.values())
 
     # Keep the ownership state machine in one scope.
     # pylint: disable-next=too-many-statements
@@ -200,6 +276,7 @@ class ModelService:
                 workspace_id=context.workspace_id,
                 session_id=context.session_id,
                 deadline=deadline,
+                identity=context.identity,
             ) as base:
                 lease = ModelLease()
                 base.resources.defer(lease.close, "configured model transport")

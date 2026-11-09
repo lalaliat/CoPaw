@@ -16,7 +16,10 @@ from functools import partial
 from typing import Any, Iterable
 
 from ..agents.acp.meta import ACP_PROJECT_DIR_META_KEY
-from ..providers.model_selection import request_model_override
+from ..providers.model_selection import (
+    request_model_override,
+    resolve_model_slot_override,
+)
 from ..services.session_thinking import apply_session_thinking
 from ..utils.io_utils import run_sync_io
 from ..utils.logging import sanitize_log_value
@@ -367,7 +370,11 @@ class AgentBuilder:
         ctx.agent_config = agent_config
 
         # Validate model availability.
-        active = agent_config.active_model
+        model_slot_override = request_model_override(ctx.request)
+        active = (
+            resolve_model_slot_override(model_slot_override)
+            or agent_config.active_model
+        )
         if not (active and active.provider_id and active.model):
             active = await run_sync_io(
                 ProviderManager.get_instance().get_active_model,
@@ -460,7 +467,6 @@ class AgentBuilder:
 
         # Model + formatter (built before the toolkit so the scroll context
         # strategy, which needs the model for token counting, can wire in).
-        model_slot_override = request_model_override(ctx.request)
         model, _formatter = await run_sync_io(
             self.build_model,
             agent_config,
@@ -579,8 +585,8 @@ class AgentBuilder:
                 agent._check_permission  # pylint: disable=protected-access
             )
             code_tool.acting = (
-                agent._acting  # pylint: disable=protected-access
-            )
+                agent._acting
+            )  # pylint: disable=protected-access
 
         # Load session state if SessionLoadHook populated it.
         if ctx.session_state:
@@ -623,6 +629,9 @@ class AgentBuilder:
         prompt_ctx = SimpleNamespace(
             workspace_dir=workspace_dir,
             agent_id=getattr(ctx, "agent_id", None),
+            session_id=getattr(ctx, "session_id", ""),
+            request=getattr(ctx, "request", None),
+            input_msgs=getattr(ctx, "input_msgs", ()),
             extras={
                 "language": agent_config.language,
                 "heartbeat_enabled": heartbeat_enabled,

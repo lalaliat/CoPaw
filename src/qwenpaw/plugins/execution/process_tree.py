@@ -13,12 +13,47 @@ from typing import Any
 class ProcessTree:
     """Own a POSIX session or a host-held Windows kill-on-close job."""
 
-    def __init__(self, pid: int) -> None:
+    def __init__(self, pid: int, *, session: bool = False) -> None:
         self.pid = pid
+        self._session = session and os.name != "nt"
+        self._started = None
+        if self._session:
+            import psutil
+
+            try:
+                self._started = psutil.Process(pid).create_time()
+            except psutil.NoSuchProcess:
+                pass
         self._job: Any = None
         self._kernel: Any = None
         if os.name == "nt":
             self._create_job()
+
+    @staticmethod
+    def check_session_visibility() -> None:
+        """Fail before spawning if the host cannot enumerate its session."""
+        import psutil
+
+        psutil.pids()
+
+    def _session_groups(self) -> set[int]:
+        import psutil
+
+        # A recycled leader PID denotes a new session, never our old tree.
+        if self._started is not None:
+            try:
+                if psutil.Process(self.pid).create_time() != self._started:
+                    return set()
+            except psutil.NoSuchProcess:
+                pass
+        groups = set()
+        for pid in psutil.pids():
+            try:
+                if os.getsid(pid) == self.pid:
+                    groups.add(os.getpgid(pid))
+            except ProcessLookupError:
+                pass
+        return groups
 
     def _create_job(self) -> None:
         from ctypes import (
@@ -100,6 +135,18 @@ class ProcessTree:
         if self._job is not None:
             if not self._kernel.TerminateJobObject(self._job, 1):
                 raise OSError("PROCESS_TREE_TERMINATE_FAILED")
+        elif self._session:
+            # Shell job control creates additional groups inside the same
+            # session. Signal children before the leader so it can reap them.
+            groups = self._session_groups()
+            for group in sorted(groups, key=lambda group: group == self.pid):
+                try:
+                    os.killpg(
+                        group,
+                        signal.SIGKILL if force else signal.SIGTERM,
+                    )
+                except ProcessLookupError:
+                    pass
         else:
             try:
                 os.killpg(
@@ -124,6 +171,8 @@ class ProcessTree:
             ):
                 return True  # Unconfirmed cleanup must retain the Job.
             return bool(data[10])
+        if self._session:
+            return bool(self._session_groups())
         try:
             os.killpg(self.pid, 0)
             return True

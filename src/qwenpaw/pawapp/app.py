@@ -138,12 +138,28 @@ def _build_capability_router(  # pylint: disable=too-many-statements
 
     router = APIRouter(**({"route_class": route_class} if route_class else {}))
 
+    def chat_options(payload):
+        if managed_stream:
+            from ..plugins._apps import chat_model
+
+            return {
+                "request_id": payload.get("request_id"),
+                "model": chat_model(payload.get("model")),
+            }
+        if payload.get("model") is not None:
+            raise HTTPException(
+                422,
+                "This app does not support model selection",
+            )
+        return {}
+
     @router.post("/chat")
     async def chat(request: Request, ctx=Depends(context_dependency)):
         payload = await request.json()
         message = str(payload.get("message") or "").strip()
         if not message:
             raise HTTPException(status_code=400, detail="message is required")
+        options = chat_options(payload)
         session_id = _resolve_app_session_id(ctx, payload.get("session_id"))
         if hasattr(ctx, "ensure_chat_session"):
             await ctx.ensure_chat_session(session_id)
@@ -152,11 +168,7 @@ def _build_capability_router(  # pylint: disable=too-many-statements
                 message,
                 skill=payload.get("skill"),
                 session_id=session_id,
-                **(
-                    {"request_id": payload.get("request_id")}
-                    if managed_stream
-                    else {}
-                ),
+                **options,
             )
         except ConfigurationException as exc:
             raise HTTPException(
@@ -171,6 +183,7 @@ def _build_capability_router(  # pylint: disable=too-many-statements
         message = str(payload.get("message") or "").strip()
         if not message:
             raise HTTPException(status_code=400, detail="message is required")
+        options = chat_options(payload)
         session_id = _resolve_app_session_id(ctx, payload.get("session_id"))
         if hasattr(ctx, "ensure_chat_session"):
             await ctx.ensure_chat_session(session_id)
@@ -180,11 +193,7 @@ def _build_capability_router(  # pylint: disable=too-many-statements
                 message,
                 skill=payload.get("skill"),
                 session_id=session_id,
-                **(
-                    {"request_id": payload.get("request_id")}
-                    if managed_stream
-                    else {}
-                ),
+                **options,
             )
             try:
                 async for event in source:

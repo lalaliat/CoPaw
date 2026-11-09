@@ -1,8 +1,8 @@
 export * from "./host.js";
 export * from "./paw.js";
-import type { QwenPawWindowNamespace } from "./host.js";
+import type { QwenPawWindowNamespace, ModelSelection } from "./host.js";
 import type { PawSdk, PawRequestOptions } from "./paw.js";
-export declare const SDK_VERSION: "1.0.0";
+export declare const SDK_VERSION: "1.1.0";
 /** Features of this library, not a claim about the currently running backend. */
 export declare const SDK_CAPABILITIES: readonly string[];
 export interface AppCapabilities {
@@ -18,6 +18,8 @@ export declare function capabilities(
 export declare function getHost(): QwenPawWindowNamespace;
 export declare function forApp(appId: string): PawSdk;
 export interface ChatRequest {
+  /** @since 1.1.0 Per-task selection; does not change the workspace default. */
+  model?: ModelSelection;
   message: string;
   session_id?: string;
   skill?: string;
@@ -58,3 +60,54 @@ export interface AppTasks {
   cancel(runId: string, options?: PawRequestOptions): Promise<CancelResult>;
 }
 export declare function tasks(appId: string): AppTasks;
+
+/** @since 1.1.0 An explicitly selected main conversation in this workspace. */
+export interface CheckpointScope extends PawRequestOptions {
+  chatId: string;
+  agentId?: string;
+}
+/** @since 1.1.0 */
+export interface CheckpointEntry {
+  id: string;
+  kind: string;
+  name: string;
+  timestamp_ms: number;
+  description: string;
+  is_current: boolean;
+}
+/** @since 1.1.0 */
+export interface SnapshotResult {
+  id: string;
+  timestamp_ms: number;
+}
+/** @since 1.1.0 */
+export interface RestoreOptions extends CheckpointScope {
+  include_memory?: boolean;
+  include_files?: boolean;
+  files?: string[];
+}
+/** @since 1.1.0 */
+export interface RestoreResult {
+  id: string;
+  dry_run: boolean;
+  restored_paths: string[];
+  deleted_paths: string[];
+  file_paths: string[];
+  include_memory: boolean;
+  include_files: boolean;
+}
+/** @since 1.1.0 */
+export interface CheckpointClient {
+  timeline(
+    options: CheckpointScope & { limit?: number },
+  ): Promise<CheckpointEntry[]>;
+  snapshot(name: string, options: CheckpointScope): Promise<SnapshotResult>;
+  previewRestore(
+    target: string,
+    options: RestoreOptions,
+  ): Promise<RestoreResult>;
+  /** Waits for native host confirmation; abort cancels a pending request. */
+  restore(target: string, options: RestoreOptions): Promise<RestoreResult>;
+}
+/** @since 1.1.0 Requires the app's standard checkpoint capability. */
+export declare function checkpoints(appId: string): CheckpointClient;

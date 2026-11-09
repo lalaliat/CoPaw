@@ -16,18 +16,16 @@ import subprocess
 import tarfile
 import zipfile
 
-# These suites use private host adapters or repository-only fixtures.
-INTERNAL = {
-    "test_sdk_entry_contract.py",
-    "test_sdk_message_bridge.py",
-    "test_sdk_event_bridge.py",
-    "test_sdk_approval_event_bridge.py",
-    "test_sdk_channel_bridge.py",
-    "test_sdk_channel_routing_contract.py",
-    "test_sdk_channel_run_bridge.py",
-    "test_sdk_provider_contract.py",
-    "test_sdk_resource_contract.py",
-}
+# Explicit portable author suites. Host-internal suites run separately in the
+# source checkout; no repository conftest or private fixture is copied here.
+AUTHOR_TESTS = (
+    "test_sdk_channel_contract.py",
+    "test_sdk_context_lifecycle.py",
+    "test_sdk_install_transaction.py",
+    "test_sdk_market_contract.py",
+    "test_sdk_memory_contract.py",
+    "test_sdk_workspace_contract.py",
+)
 
 
 def prepare_author_tests(source: Path, root: Path) -> list[str]:
@@ -41,10 +39,10 @@ def prepare_author_tests(source: Path, root: Path) -> list[str]:
     ):
         shutil.copy2(source / "tests/unit/plugins" / fixture, suite)
     tests = []
-    for file in sorted((source / "tests/unit/plugins").glob("test_sdk_*.py")):
-        if file.name not in INTERNAL:
-            shutil.copy2(file, suite)
-            tests.append(file.name)
+    for name in AUTHOR_TESTS:
+        file = source / "tests/unit/plugins" / name
+        shutil.copy2(file, suite)
+        tests.append(file.name)
     assert tests, "No public author tests found in build snapshot"
     (root / "pytest.ini").write_text("[pytest]\nasyncio_mode = auto\n")
     return tests
@@ -118,7 +116,11 @@ def main():
             with tarfile.open(artifact) as archive:
                 names = archive.getnames()
         assert not any(
-            "sdk_test" in Path(name).parts for name in names
+            any(
+                part in Path(name).parts
+                for part in ("sdk_test", "sdk_validation_v1_1")
+            )
+            for name in names
         ), "Local experiment content leaked into artifact"
         report["artifacts"][artifact.name] = {
             "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),

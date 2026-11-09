@@ -117,10 +117,17 @@ def _configure(
     package.__package__ = "qwenpaw"
     package.__path__ = [str(support / "qwenpaw")]
     sys.modules["qwenpaw"] = package
-    plugins = types.ModuleType("qwenpaw.plugins")
-    plugins.__package__ = "qwenpaw.plugins"
-    plugins.__path__ = [str(support / "qwenpaw/plugins")]
+    plugin_spec = importlib.util.spec_from_file_location(
+        "qwenpaw.plugins",
+        support / "qwenpaw/plugins/__init__.py",
+        submodule_search_locations=[str(support / "qwenpaw/plugins")],
+    )
+    if plugin_spec is None or plugin_spec.loader is None:
+        raise RuntimeError("SDK_BOOTSTRAP_UNAVAILABLE")
+    plugins = importlib.util.module_from_spec(plugin_spec)
     sys.modules["qwenpaw.plugins"] = plugins
+    # The trusted SDK initializer only declares lazy exports, not host services.
+    plugin_spec.loader.exec_module(plugins)
     # Direct path assignment never executes additional .pth files.
     boot._clean_environment(())
     private_env = boot.validate_private_environment(
@@ -168,6 +175,7 @@ async def run(
             raise ProtocolValidationError("identity mismatch")
         if start_task is not None:
             start_task.cancel()
+            await asyncio.gather(start_task, return_exceptions=True)
         if component is not None:
             await component.stop()
         if management_stop is not None:
@@ -307,6 +315,9 @@ async def _prepare_component(boot, packet, runtime, identity, peer):
     sys.path.insert(0, str(root))
     sys.modules["qwenpaw"].__path__.insert(0, str(root / "qwenpaw"))
     component_class = boot._load_driver_class(entrypoint, source)
+    prepare = getattr(runtime, "prepare_component", None)
+    if prepare is not None:
+        component_class = prepare(component_class, packet)
     if mode == "probe":
         validate_driver(component_class)
     return component_class
